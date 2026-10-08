@@ -17,7 +17,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Card
@@ -52,12 +56,12 @@ fun HomeScreen(
         item(span = { GridItemSpan(maxLineSpan) }) {
             Card(modifier = Modifier.fillMaxWidth().padding(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Rounded.Radio, contentDescription = null)
                     Text("Музыка для тебя", style = MaterialTheme.typography.headlineMedium)
                     Text(if (maturity == "ready") "Радио знает твой вкус" else "Любимые треки и новые открытия в одном потоке",
                         style = MaterialTheme.typography.bodyLarge)
-                    Button(onClick = onRadio, modifier = Modifier.padding(top = 8.dp)) {
+                    Button(onClick = onRadio, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                         Text("Запустить радио")
                     }
                 }
@@ -65,12 +69,16 @@ fun HomeScreen(
         }
 
         item(span = { GridItemSpan(maxLineSpan) }) {
-            FlowRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                FilledTonalButton(onClick = onShare, enabled = !sharing) {
-                    Icon(Icons.Rounded.Share, null); Spacer(Modifier.width(8.dp)); Text("Поделиться")
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                FilledTonalButton(onClick = onShare, enabled = !sharing, modifier = Modifier.weight(1f).fillMaxHeight(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+                    Icon(Icons.Rounded.Share, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                    Text("Поделиться", modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
                 }
-                FilledTonalButton(onClick = onRefreshMixes, enabled = !refreshingMixes) {
-                    Icon(Icons.Rounded.Refresh, null); Spacer(Modifier.width(8.dp)); Text(if (refreshingMixes) "Обновляем…" else "Обновить миксы")
+                FilledTonalButton(onClick = onRefreshMixes, enabled = !refreshingMixes, modifier = Modifier.weight(1f).fillMaxHeight(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+                    Icon(Icons.Rounded.Refresh, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                    Text(if (refreshingMixes) "Обновляем…" else "Обновить миксы", modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
                 }
             }
         }
