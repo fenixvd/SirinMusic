@@ -87,7 +87,7 @@ APK появится в `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## CI и релизы
 
-`Android CI` запускает unit-тесты, Android Lint и сборку debug APK на push и pull request в `master`. APK и отчёты доступны в артефактах GitHub Actions.
+`Android CI` запускает unit-тесты, Android Lint и сборку debug APK на push и pull request в `master` и `dev`. APK и отчёты доступны в артефактах GitHub Actions.
 
 `Android Release` собирает подписанный APK по тегу `vX.Y.Z` либо вручную для существующего тега. Коммит тега должен принадлежать истории `master`. Отдельная задача публикации выкладывает проверенный APK и SHA-256 в GitHub Releases. Для публикации нужны секреты подписи; приватного ключа в репозитории нет.
 
