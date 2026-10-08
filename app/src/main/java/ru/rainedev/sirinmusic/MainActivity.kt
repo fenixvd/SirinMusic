@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -25,18 +26,48 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import androidx.navigation.compose.*
+import ru.rainedev.sirinmusic.data.ConnectLink
 import ru.rainedev.sirinmusic.ui.*
 import ru.rainedev.sirinmusic.ui.theme.SirinMusicTheme
 
 class MainActivity : ComponentActivity() {
+    // Same instance as viewModel() in SirinContent (same owner and default key).
+    private val vm: AppViewModel by viewModels { AppViewModel.Factory(application as SirinApp) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); enableEdgeToEdge()
         val app = application as SirinApp
         app.updates.checkOnLaunch()
+        // musik://connect?url=…&token=… from the system camera. After recreation the Intent
+        // is the same one: an unused link is still in the ViewModel (or, after process
+        // death, restored from the Intent by its saved marker); a used one must not come back.
+        if (savedInstanceState == null) linkFrom(intent)?.let(vm.pendingLink::offer)
+        else vm.pendingLink.restore(linkFrom(intent), savedInstanceState.getString(KEY_PENDING_LINK))
         setContent {
             val appearance by app.settings.appearance.collectAsStateWithLifecycle()
             SirinMusicTheme(appearance) { Surface(Modifier.fillMaxSize()) { SirinContent(app) } }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val link = linkFrom(intent) ?: return
+        // The accepted link becomes the Activity's Intent, so a recreated Activity
+        // reads this link (and matches its saved marker), not the launch one.
+        setIntent(intent)
+        vm.pendingLink.offer(link)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        vm.pendingLink.marker()?.let { outState.putString(KEY_PENDING_LINK, it) }
+    }
+
+    private fun linkFrom(intent: Intent?): ConnectLink? =
+        intent?.takeIf { it.action == Intent.ACTION_VIEW }?.dataString?.let(ConnectLink::parse)
+
+    private companion object {
+        const val KEY_PENDING_LINK = "pending_link_marker"
     }
 }
 
@@ -47,6 +78,7 @@ private data class Destination(val route: String, val label: String, val icon: I
 private fun SirinContent(app: SirinApp) {
     val vm: AppViewModel = viewModel(factory = AppViewModel.Factory(app))
     val state by vm.state.collectAsStateWithLifecycle()
+    val pendingLink by vm.pendingLink.value.collectAsStateWithLifecycle()
     val player by vm.playback.ui.collectAsStateWithLifecycle()
     val owner = LocalLifecycleOwner.current
     DisposableEffect(owner, vm) {
@@ -55,8 +87,14 @@ private fun SirinContent(app: SirinApp) {
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
     if (!state.loggedIn) {
-        LoginScreen(vm.savedUrl, vm.savedToken, state.checking, state.loginError, vm::login)
+        LoginScreen(vm.savedUrl, vm.savedToken, state.checking, state.loginError, vm::login,
+            pendingLink, vm.pendingLink::consume)
         return
+    }
+    LaunchedEffect(pendingLink) {
+        if (pendingLink != null && vm.pendingLink.consume() != null) {
+            vm.showMessage("Уже подключено к серверу. Чтобы подключить другой, выйди в профиле.")
+        }
     }
     val context = androidx.compose.ui.platform.LocalContext.current
     val nav = rememberNavController()

@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- QR sign-in; manual entry still works without a camera. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
@@ -28,7 +31,19 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- musik://connect?url=…&token=… from the server QR, opened by the system camera. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="musik" android:host="connect" />
+            </intent-filter>
         </activity>
+        <!-- The scanner screen is landscape-locked by default; follow the phone instead. -->
+        <activity
+            android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            android:screenOrientation="fullSensor"
+            tools:replace="screenOrientation" />
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".UpdatesActivity" android:exported="false" />
         <activity android:name=".AboutActivity" android:exported="false" />
