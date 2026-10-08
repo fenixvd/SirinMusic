@@ -18,7 +18,7 @@ android {
         minSdk = 27
         targetSdk = 36
         versionCode = providers.environmentVariable("SIRIN_VERSION_CODE").orNull?.toInt() ?: 1
-        versionName = providers.environmentVariable("SIRIN_VERSION_NAME").orNull ?: "1.0-dev"
+        versionName = providers.environmentVariable("SIRIN_VERSION_NAME").orNull ?: "2.0rc0.2-dev"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

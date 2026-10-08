@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.QrCodeScanner
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
@@ -90,6 +92,11 @@ fun LoginScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.padding(bottom = 20.dp)) {
+            Icon(Icons.Rounded.MusicNote, null, Modifier.padding(20.dp).size(40.dp),
+                tint = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
         Text("Sirin Music", style = MaterialTheme.typography.displaySmall)
         Text(
             "Подключение к своему musik",
@@ -139,6 +146,7 @@ fun LoginScreen(
             value = token,
             onValueChange = { token = it },
             label = { Text("API-токен") },
+            enabled = !checking,
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             singleLine = true,

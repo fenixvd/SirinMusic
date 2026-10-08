@@ -172,6 +172,30 @@ class MusikApi(private val settings: ConnectionSettings) {
 
 
     suspend fun profile(): Profile = get("/api/profile")
+    suspend fun weeklyMetrics(): WeeklyMetrics = get("/api/metrics/weekly")
+    suspend fun recommendations(): Recommendations = get("/api/metrics/recommendations")
+    suspend fun saveExplore(lo: Double, hi: Double) {
+        require(lo.isFinite() && hi.isFinite() && lo in 0.0..1.0 && hi in lo..1.0) { "Некорректные границы новизны" }
+        raw("/api/profile/explore", """{"explore_lo":$lo,"explore_hi":$hi}""", "PUT")
+    }
+    suspend fun contexts(): ContextsReply = get("/api/contexts")
+    suspend fun createContext(name: String, kind: String): TasteContext {
+        require(name.isNotBlank() && kind in setOf("mood", "place", "activity"))
+        return post("/api/contexts", """{"name":${quote(name.trim())},"kind":${quote(kind)},"influence":1,"learning_enabled":true}""")
+    }
+    suspend fun activateContext(id: String, session: String, active: Boolean): ContextActivation =
+        post("/api/contexts/${segment(id)}/${if (active) "activate" else "deactivate"}", """{"session_id":${quote(session)}}""")
+    suspend fun deleteContext(id: String) { raw("/api/contexts/${segment(id)}", null, "DELETE") }
+    suspend fun rules(): RulesReply = get("/api/rules")
+    suspend fun restoreRule(id: String) { raw("/api/rules/${segment(id)}", null, "DELETE") }
+    suspend fun undoRule() { raw("/api/rules/undo", "{}") }
+    suspend fun shares(): SharesReply = get("/api/share/radio")
+    suspend fun createShare(): RadioShare = post("/api/share/radio", """{"name":"Sirin Music"}""")
+    suspend fun revokeShare(token: String) { raw("/api/share/radio/${segment(token)}", null, "DELETE") }
+    suspend fun refreshMixes(): MixJob = post("/api/jobs/mix_pack")
+    suspend fun mixJob(id: Long): MixJob = get("/api/jobs/$id")
+    private fun segment(value: String) = java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+
 
     suspend fun jump(sessionId: String, trackId: Long): RadioStart =
         post("/api/session/jump", """{"session_id":${quote(sessionId)},"track_id":$trackId}""")

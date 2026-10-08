@@ -127,4 +127,52 @@ class MusikApiTest {
         assertNotNull(validateServerUrl("https://user:password@music.example.org"))
         assertNotNull(validateServerUrl("https://music.example.org?token=secret"))
     }
+    @Test fun liveProfileContractUsesPositiveAndNegativeCounts() = runBlocking {
+        body = """{"maturity":"ready","n_positive":119,"n_negative":302,"explore_lo":0.1,"explore_hi":0.4,"explore_ratio":0.15,"top_artists":[{"artist":"Linkin Park","count":24}],"source":"online_ema"}"""
+        val p = api.profile()
+        assertEquals(119, p.likes); assertEquals(302, p.skips)
+        assertEquals(0.15, p.exploreRatio!!, 0.0001)
+        assertEquals("Linkin Park", p.topArtists.single().artist)
+        assertNull(p.plays)
+    }
+    @Test fun weeklyMetricsDoNotInventMissingValues() = runBlocking {
+        body = """{"window_days":7,"overall":{"played":387,"unique_artists":175,"finish_rate":0.18,"early_skip_rate":0.67},"breakdowns":[{"dimension":"source","value":"exploit","played":359}]}"""
+        val metrics = api.weeklyMetrics()
+        assertEquals(7, metrics.windowDays)
+        assertEquals(175, metrics.overall!!.uniqueArtists)
+        assertEquals(0.67, metrics.overall!!.skipRate!!, 0.0001)
+        assertNull(metrics.breakdowns.single().finishRate)
+    }
+    @Test fun exploreUsesPutAndRejectsReversedBoundsBeforeRequest() = runBlocking {
+        api.saveExplore(0.1, 0.4)
+        val request = requests.take()
+        assertEquals("PUT", request.first)
+        assertEquals("/api/profile/explore", request.second)
+        assertEquals("0.1", Json.parseToJsonElement(request.third).jsonObject["explore_lo"]!!.jsonPrimitive.content)
+        try { api.saveExplore(0.8, 0.1); fail("reversed bounds accepted") } catch (_: IllegalArgumentException) { }
+        try { api.saveExplore(Double.NaN, 0.4); fail("NaN accepted") } catch (_: IllegalArgumentException) { }
+        assertTrue(requests.isEmpty())
+    }
+    @Test fun contextsPreserveOtherActiveIdsAndEscapePath() = runBlocking {
+        body = """{"ok":true,"context_ids":["old","new/id"]}"""
+        val reply = api.activateContext("new/id", "session", true)
+        assertEquals(listOf("old", "new/id"), reply.contextIds)
+        val request = requests.take()
+        assertEquals("/api/contexts/new%2Fid/activate", request.second)
+        assertEquals("session", Json.parseToJsonElement(request.third).jsonObject["session_id"]!!.jsonPrimitive.content)
+    }
+    @Test fun mixJobAndRadioShareUseIndependentServerResources() = runBlocking {
+        body = """{"id":6,"status":"pending"}"""
+        assertEquals(6L, api.refreshMixes().id)
+        assertEquals("/api/jobs/mix_pack", requests.take().second)
+        body = """{"id":6,"status":"done","result":{"count":11}}"""
+        assertEquals("done", api.mixJob(6).status)
+        assertEquals("/api/jobs/6", requests.take().second)
+        body = """{"token":"public-token","url":"https://example.org/listen/public-token.mp3","name":"Sirin Music"}"""
+        val share = api.createShare()
+        assertEquals("public-token", share.token)
+        assertFalse(share.url.contains("fixture-token"))
+        assertEquals("/api/share/radio", requests.take().second)
+    }
+
 }

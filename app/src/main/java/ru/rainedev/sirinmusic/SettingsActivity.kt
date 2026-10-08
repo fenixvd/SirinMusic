@@ -5,8 +5,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import ru.rainedev.sirinmusic.ui.ColorPicker
+import ru.rainedev.sirinmusic.ui.SettingsMenu
+import ru.rainedev.sirinmusic.ui.SettingsPage
 import android.os.Build
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -46,6 +49,8 @@ class SettingsActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScreen(app: SirinApp, appearance: Appearance, onBack: () -> Unit) {
+    var pageName by rememberSaveable { mutableStateOf<String?>(null) }
+    val page = pageName?.let { SettingsPage.valueOf(it) }
     var url by rememberSaveable { mutableStateOf(app.settings.baseUrl) }
     // Secret stays out of savedInstanceState and screenshots until explicitly revealed.
     var token by remember { mutableStateOf(app.settings.token) }
@@ -57,11 +62,32 @@ private fun SettingsScreen(app: SirinApp, appearance: Appearance, onBack: () -> 
     LaunchedEffect(Unit) { cacheBytes = app.imageCache.diskBytes() }
     val scope = rememberCoroutineScope()
     val snack = remember { SnackbarHostState() }
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-    Scaffold(modifier = Modifier.widthIn(max = 840.dp).fillMaxSize(), topBar = { TopAppBar(title = { Text("Настройки") }, navigationIcon = {
-        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Назад") }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val wide = maxWidth >= 840.dp
+    BackHandler(enabled = !wide && page != null) { pageName = null }
+    val activePage = page ?: if (wide) SettingsPage.APPEARANCE else null
+    Scaffold(topBar = { TopAppBar(title = { Text(if (wide) "Настройки" else page?.title ?: "Настройки") }, navigationIcon = {
+        IconButton(onClick = { if (!wide && page != null) pageName = null else onBack() }) {
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Назад")
+        }
     }) }, snackbarHost = { SnackbarHost(snack) }) { padding ->
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(padding).imePadding().padding(16.dp)) {
+        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
+        Row(Modifier.widthIn(max = 1120.dp).fillMaxSize()) {
+            if (wide || activePage == null) {
+                Column(Modifier.then(if (wide) Modifier.width(320.dp) else Modifier.weight(1f))
+                    .verticalScroll(rememberScrollState()).padding(16.dp)) {
+                    Text("Настрой приложение под себя", style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(bottom = 16.dp))
+                    SettingsMenu(activePage, { pageName = it.name },
+                        onUpdates = { app.startActivity(android.content.Intent(app, UpdatesActivity::class.java)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) },
+                        onAbout = { app.startActivity(android.content.Intent(app, AboutActivity::class.java)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) })
+                }
+            }
+            if (activePage != null) key(activePage) {
+            Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).imePadding().padding(24.dp)) {
+            if (activePage == SettingsPage.APPEARANCE) {
             Text("Внешний вид", style = MaterialTheme.typography.titleLarge)
             Text("Тема", Modifier.padding(top = 16.dp), style = MaterialTheme.typography.titleMedium)
             ThemeMode.entries.forEach { mode ->
@@ -91,7 +117,8 @@ private fun SettingsScreen(app: SirinApp, appearance: Appearance, onBack: () -> 
                     app.settings.setAppearance(appearance.copy(customColor = it))
                 }
             }
-            HorizontalDivider(Modifier.padding(vertical = 16.dp))
+            }
+            if (activePage == SettingsPage.STORAGE) {
             Text("Хранилище", style = MaterialTheme.typography.titleLarge)
             Text("Кеш обложек: ${android.text.format.Formatter.formatShortFileSize(app, cacheBytes)} из 64 МБ",
                 Modifier.padding(top = 12.dp))
@@ -109,10 +136,8 @@ private fun SettingsScreen(app: SirinApp, appearance: Appearance, onBack: () -> 
                 }
             }, modifier = Modifier.padding(top = 12.dp)) { Text(if (clearing) "Очищаю…" else "Очистить кеш") }
 
-            HorizontalDivider(Modifier.padding(vertical = 16.dp))
-            Text("Обновления", style = MaterialTheme.typography.titleLarge)
-            OutlinedButton(onClick = { appContextStartUpdates(app) }) { Text("Проверить новую версию") }
-            HorizontalDivider(Modifier.padding(vertical = 16.dp))
+            }
+            if (activePage == SettingsPage.CONNECTION) {
             Text("Подключение", style = MaterialTheme.typography.titleLarge)
             OutlinedTextField(url, { url = it; error = null }, label = { Text("Адрес сервера") }, singleLine = true,
                 enabled = !checking, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -142,11 +167,11 @@ private fun SettingsScreen(app: SirinApp, appearance: Appearance, onBack: () -> 
                     }
                 }
             }) { Text(if (checking) "Проверяю…" else "Проверить и сохранить") }
+            }
+            }
+            }
+        }
         }
     }
     }
-}
-
-private fun appContextStartUpdates(app: SirinApp) {
-    app.startActivity(android.content.Intent(app, UpdatesActivity::class.java).putExtra("check_updates", true).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
 }

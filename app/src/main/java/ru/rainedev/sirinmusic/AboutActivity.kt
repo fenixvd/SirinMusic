@@ -31,10 +31,11 @@ class AboutActivity : ComponentActivity() {
         setContent {
             val appearance by app.settings.appearance.collectAsStateWithLifecycle()
             SirinMusicTheme(appearance) {
-                Scaffold(topBar = { TopAppBar(title = { Text("О разработчике") }, navigationIcon = {
+                Scaffold(topBar = { TopAppBar(title = { Text("О приложении") }, navigationIcon = {
                     IconButton(onClick = ::finish) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Назад") }
                 }) }) { padding ->
-                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(padding).padding(24.dp),
+                    Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
+                    Column(Modifier.widthIn(max = 760.dp).fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally) {
                         Surface(shape = RoundedCornerShape(24.dp), color = Color(0xFF211C19)) {
                             Image(painterResource(R.drawable.ic_launcher_foreground), "Sirin Music", Modifier.size(108.dp))
@@ -47,6 +48,7 @@ class AboutActivity : ComponentActivity() {
                             modifier = Modifier.padding(top = 12.dp))
                         Text("Сделано на Kotlin и Jetpack Compose. Воспроизведение — AndroidX Media3; изображения — Coil; сеть — OkHttp.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 24.dp))
+                    }
                     }
                 }
             }

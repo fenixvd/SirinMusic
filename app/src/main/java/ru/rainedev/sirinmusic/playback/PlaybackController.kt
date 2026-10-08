@@ -31,6 +31,7 @@ data class PlayerUi(
     val current: Track? = null,
     val queue: List<Track> = emptyList(),
     val sessionId: String? = null,
+    val contextIds: List<String> = emptyList(),
     val maturity: String? = null,
     val mode: String = "",
     val isPlaying: Boolean = false,
@@ -123,6 +124,7 @@ class PlaybackController(
 
     fun playAlbum(artist: String, album: String) = load { api.playAlbum(artist, album) }
     fun playPlaylist(id: Long, index: Int = 0) = load { api.playPlaylist(id, index) }
+    fun setContexts(session: String, ids: List<String>) { _ui.update { if (it.sessionId == session) it.copy(contextIds = ids) else it } }
     fun setFavorites(ids: Set<Long>) { _ui.update { it.copy(favorites = ids) } }
 
 
@@ -136,6 +138,7 @@ class PlaybackController(
                     _ui.update {
                         it.copy(
                             sessionId = reply.sessionId ?: it.sessionId,
+                            contextIds = emptyList(),
                             queue = if (reply.fixed) reply.tracks else reply.queue,
                             fixed = reply.fixed,
                             ended = false,

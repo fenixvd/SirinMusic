@@ -158,7 +158,8 @@ private fun SirinContent(app: SirinApp) {
                     composable("home") {
                         HomeScreen(state.mixes, state.favorites, player.maturity, vm::artworkUrl,
                             { vm.playback.startRadio() }, { vm.playback.playMix(it) }, { vm.playback.playTrack(it) }, padding,
-                            onFavorites = { nav.navigate("favorites") })
+                            onFavorites = { nav.navigate("favorites") }, onShare = vm::shareRadio,
+                            onRefreshMixes = vm::refreshServerMixes, refreshingMixes = "mix-refresh" in state.busy, sharing = "shares" in state.busy)
                     }
                     composable("library") {
                         LibraryScreen(state, player.ratings, player.ratingPending, player.sessionId != null, vm::artworkUrl, { vm.playback.playTrack(it) },
@@ -200,15 +201,29 @@ private fun SirinContent(app: SirinApp) {
                     }
                     composable("lyrics") { LyricsScreen(app.api, player, vm.playback::seekTo, padding) }
                     composable("profile") {
+                        LaunchedEffect(Unit) { vm.loadProfile() }
                         ProfileScreen(vm.savedUrl, state.serverTracks, state.serverVersion, player.maturity, state.profile,
-                            state.favorites.size, vm::refreshAll, { vm.logout() }, padding,
-                            onSettings = { context.startActivity(Intent(context, SettingsActivity::class.java)) },
-                            onAbout = { context.startActivity(Intent(context, AboutActivity::class.java)) },
-                            onFavorites = { nav.navigate("favorites") })
+                            state.favorites.size, vm::loadProfile, { vm.logout() }, padding,
+                            onFavorites = { nav.navigate("favorites") }, state = state,
+                            contextIds = player.contextIds, hasSession = player.sessionId != null && !player.fixed,
+                            onExplore = vm::saveExplore, onCreateContext = vm::createContext,
+                            onToggleContext = vm::toggleContext, onDeleteContext = vm::deleteContext,
+                            onRestoreRule = vm::restoreRule, onCreateShare = { vm.createShare() },
+                            onShare = { share ->
+                                try { shareRadioLink(context, share.url) }
+                                catch (e: Exception) { vm.showMessage("Не удалось открыть меню отправки ссылки") }
+                            }, onRevokeShare = vm::revokeShare)
                     }
                 }
                 }
             }
+        }
+    }
+    LaunchedEffect(state.shareToSend) {
+        state.shareToSend?.let { share ->
+            try { shareRadioLink(context, share.url) }
+            catch (e: Exception) { vm.showMessage("Не удалось открыть меню отправки ссылки") }
+            finally { vm.consumeShare() }
         }
     }
     if (addTrackId != null) AddToPlaylistSheet(state.playlists, "playlist-mutation" in state.busy,

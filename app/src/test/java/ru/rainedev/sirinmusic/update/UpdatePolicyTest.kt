@@ -20,6 +20,12 @@ class UpdatePolicyTest {
         assertNull(selectUpdate(release(), "1.5.0"))
         assertEquals("1.5.0", selectUpdate(release(), "1.5-dev")?.version)
     }
+    @Test fun compactRcLabelKeepsUpdateOrdering() {
+        assertEquals(ReleaseVersion.parse("2.0.0-rc.0.1-dev"), ReleaseVersion.parse("2.0rc0.1-dev"))
+        assertTrue(ReleaseVersion.parse("2.0rc0.2-dev")!! > ReleaseVersion.parse("2.0rc0.1-dev")!!)
+        assertNull(selectUpdate(release("v1.5.0"), "2.0rc0.1-dev"))
+        assertEquals("2.0.0", selectUpdate(release("v2.0.0"), "2.0rc0.1-dev")?.version)
+    }
     @Test fun draftAndPrereleaseAreIgnored() {
         assertNull(selectUpdate(release().copy(draft = true), "1.0.0"))
         assertNull(selectUpdate(release().copy(prerelease = true), "1.0.0"))

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +32,15 @@ data class AppState(
     val favoriteArtistRows: List<ArtistRow> = emptyList(),
     val favoriteAlbumRows: List<AlbumRow> = emptyList(),
     val profile: Profile? = null,
+    val weekly: WeeklyMetrics? = null,
+    val recommendations: Recommendations? = null,
+    val contexts: List<TasteContext> = emptyList(),
+    val rules: List<RadioRule> = emptyList(),
+    val shares: List<RadioShare> = emptyList(),
+    val profileErrors: Map<String, String> = emptyMap(),
+    val profileLoading: Boolean = false,
+    val shareToSend: RadioShare? = null,
+
     val libraryLoading: Boolean = false,
     val playlists: List<Playlist> = emptyList(),
     val playlistsLoading: Boolean = false,
@@ -118,9 +128,91 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
         } finally { _state.update { it.copy(libraryLoading = false) } }
     }
     fun loadProfile() = task("profile") {
-        val p = api.profile(); val h = api.health()
-        _state.update { it.copy(profile = p, serverTracks = h.tracks, serverVersion = h.version) }
+        refreshProfileDetails()
+        val h = api.health()
+        _state.update { it.copy(serverTracks = h.tracks, serverVersion = h.version) }
     }
+    private suspend fun <T> section(key: String, fetch: suspend () -> T, apply: (AppState, T) -> AppState) {
+        try {
+            val value = fetch()
+            _state.update { apply(it, value).copy(profileErrors = it.profileErrors - key) }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
+            _state.update { it.copy(profileErrors = it.profileErrors + (key to (e.message ?: "Не удалось загрузить"))) }
+        }
+    }
+    private suspend fun refreshProfileDetails() {
+        _state.update { it.copy(profileLoading = true) }
+        try {
+            section("taste", { api.profile() }) { s, v -> s.copy(profile = v) }
+            section("weekly", { api.weeklyMetrics() }) { s, v -> s.copy(weekly = v) }
+            section("policy", { api.recommendations() }) { s, v -> s.copy(recommendations = v) }
+            section("contexts", { api.contexts() }) { s, v -> s.copy(contexts = v.contexts) }
+            section("rules", { api.rules() }) { s, v -> s.copy(rules = v.rules.filter { it.action == "block" }) }
+            section("shares", { api.shares() }) { s, v -> s.copy(shares = v.shares.filter { it.active }) }
+        } finally { _state.update { it.copy(profileLoading = false) } }
+    }
+    fun saveExplore(lo: Double, hi: Double) = mutation("explore") {
+        api.saveExplore(lo, hi)
+        val p = api.profile(); _state.update { it.copy(profile = p, message = "Границы новизны сохранены") }
+    }
+    fun createContext(name: String, kind: String) = mutation("contexts") {
+        api.createContext(name, kind)
+        val r = api.contexts(); _state.update { it.copy(contexts = r.contexts, message = "Настроение добавлено") }
+    }
+    fun toggleContext(id: String, active: Boolean) = mutation("contexts") {
+        val session = playback.ui.value.sessionId ?: error("Сначала запусти радио")
+        val r = api.activateContext(id, session, active)
+        playback.setContexts(session, r.contextIds)
+    }
+    fun deleteContext(id: String) = mutation("contexts") {
+        val snapshot = playback.ui.value
+        if (id in snapshot.contextIds && snapshot.sessionId != null) {
+            val r = api.activateContext(id, snapshot.sessionId, false)
+            playback.setContexts(snapshot.sessionId, r.contextIds)
+        }
+        api.deleteContext(id)
+        val r = api.contexts(); _state.update { it.copy(contexts = r.contexts) }
+    }
+    fun restoreRule(id: String?) = mutation("rules") {
+        if (id == null) api.undoRule() else api.restoreRule(id)
+        val r = api.rules(); _state.update { it.copy(rules = r.rules.filter { it.action == "block" }) }
+    }
+    fun createShare(send: Boolean = false) = mutation("shares") {
+        val created = api.createShare()
+        val r = api.shares()
+        _state.update { it.copy(shares = r.shares.filter { it.active }, shareToSend = if (send) created else null) }
+    }
+    fun shareRadio() = mutation("shares") {
+        val r = api.shares()
+        val share = r.shares.firstOrNull { it.active } ?: api.createShare()
+        val updated = api.shares()
+        _state.update { it.copy(shares = updated.shares.filter { it.active }, shareToSend = share) }
+    }
+    fun consumeShare() { _state.update { it.copy(shareToSend = null) } }
+    fun revokeShare(token: String) = mutation("shares") {
+        api.revokeShare(token); val r = api.shares()
+        _state.update { it.copy(shares = r.shares.filter { it.active }) }
+    }
+    fun refreshServerMixes() = mutation("mix-refresh") {
+        val job = api.refreshMixes()
+        require(job.id > 0) { "Сервер не вернул номер задания" }
+        _state.update { it.copy(message = "Подборки обновляются на сервере") }
+        repeat(90) {
+            delay(2000)
+            val current = api.mixJob(job.id)
+            when (current.status) {
+                "done" -> {
+                    val mixes = api.mixes()
+                    _state.update { it.copy(mixes = mixes.mixes, hint = mixes.hint, message = "Подборки обновлены") }
+                    return@mutation
+                }
+                "failed", "error" -> error("Не удалось обновить подборки")
+            }
+        }
+        _state.update { it.copy(message = "Задание ещё выполняется на сервере. Обнови данные позже.") }
+    }
+
     private suspend fun refreshFavorites() {
         val r = api.favorites(); val tracks = r.tracks.map { it.asTrack() }.filter { it.key > 0 }.distinctBy { it.key }
         playback.setFavorites(tracks.map { it.key }.toSet())

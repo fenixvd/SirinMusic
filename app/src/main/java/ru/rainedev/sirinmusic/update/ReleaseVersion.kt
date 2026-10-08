@@ -25,7 +25,12 @@ internal data class ReleaseVersion(val major: Long, val minor: Long, val patch: 
     companion object {
         private val pattern = Regex("^v?([0-9]+)\\.([0-9]+)(?:\\.([0-9]+))?(?:-([0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*))?$")
         fun parse(raw: String): ReleaseVersion? {
-            val m = pattern.matchEntire(raw.trim()) ?: return null
+            // Development builds also use the project's compact RC label, e.g. 2.0rc0.1-dev.
+            val normalized = raw.trim().replace(
+                Regex("^(v?[0-9]+\\.[0-9]+)rc([0-9]+(?:\\.[0-9]+)*)(-dev)?$"),
+                "$1.0-rc.$2$3",
+            )
+            val m = pattern.matchEntire(normalized) ?: return null
             return ReleaseVersion(m.groupValues[1].toLongOrNull() ?: return null,
                 m.groupValues[2].toLongOrNull() ?: return null,
                 m.groupValues[3].ifEmpty { "0" }.toLongOrNull() ?: return null,

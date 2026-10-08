@@ -118,8 +118,12 @@ data class FavoriteReply(
 data class Profile(
     val maturity: String? = null,
     val plays: Int? = null,
-    val likes: Int? = null,
-    val skips: Int? = null,
+    @SerialName("n_positive") val likes: Int? = null,
+    @SerialName("n_negative") val skips: Int? = null,
+    @SerialName("explore_lo") val exploreLo: Double? = null,
+    @SerialName("explore_hi") val exploreHi: Double? = null,
+    @SerialName("explore_ratio") val exploreRatio: Double? = null,
+    @SerialName("top_artists") val topArtists: List<TopArtist> = emptyList(),
     @SerialName("tracks_ready") val tracksReady: Int? = null,
 )
 
@@ -185,3 +189,44 @@ data class Lyrics(
     val status: String = "absent",
     val source: String = "",
 )
+
+@Serializable data class TopArtist(val artist: String = "", val count: Int = 0)
+@Serializable data class WeeklyMetrics(
+    @SerialName("window_days") val windowDays: Int? = null,
+    val overall: Outcome? = null, val breakdowns: List<Outcome> = emptyList(),
+)
+@Serializable data class Outcome(
+    val dimension: String? = null, val value: String? = null, val played: Int? = null,
+    @SerialName("unique_artists") val uniqueArtists: Int? = null,
+    @SerialName("finish_rate") val finishRate: Double? = null,
+    @SerialName("early_skip_rate") val skipRate: Double? = null,
+)
+@Serializable data class Recommendations(
+    @SerialName("last_policy") val lastPolicy: LastPolicy? = null,
+)
+@Serializable data class LastPolicy(val policy: RadioPolicy? = null)
+@Serializable data class RadioPolicy(
+    @SerialName("explore_share") val exploreShare: Double? = null,
+    val bounds: List<Double> = emptyList(),
+)
+@Serializable data class TasteContext(
+    @SerialName("context_id") val id: String = "", val name: String = "", val kind: String = "mood",
+)
+@Serializable data class ContextsReply(val contexts: List<TasteContext> = emptyList())
+@Serializable data class ContextActivation(
+    @SerialName("context_ids") val contextIds: List<String> = emptyList(),
+)
+@Serializable data class RadioRule(
+    @SerialName("rule_id") val id: String = "",
+    @SerialName("target_type") val targetType: String = "",
+    @SerialName("target_key") val targetKey: String = "",
+    val action: String = "", val remaining: String? = null,
+    @SerialName("expires_at") val expiresAt: String? = null,
+)
+@Serializable data class RulesReply(val rules: List<RadioRule> = emptyList())
+@Serializable data class RadioShare(
+    val token: String = "", val name: String = "", val url: String = "", val active: Boolean = true,
+    @SerialName("listen_count") val listenCount: Int = 0,
+)
+@Serializable data class SharesReply(val shares: List<RadioShare> = emptyList())
+@Serializable data class MixJob(val id: Long = 0, val status: String = "", val error: String? = null)
