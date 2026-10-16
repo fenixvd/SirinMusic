@@ -135,7 +135,9 @@ data class FavoriteEntry(
     val title: String? = null,
     val duration: Double? = null,
 ) {
-    fun asTrack(): Track = track ?: Track(trackId = trackId, artist = artist, title = title, duration = duration)
+    fun asTrack(): Track = track?.let {
+        if (it.key != 0L) it else it.copy(trackId = trackId)
+    } ?: Track(trackId = trackId, artist = artist, title = title, duration = duration)
 }
 
 @Serializable

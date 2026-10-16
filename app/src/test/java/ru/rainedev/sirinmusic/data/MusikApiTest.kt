@@ -47,6 +47,35 @@ class MusikApiTest {
         body = """[{"track_id":7,"title":"Legacy"}]"""
         assertEquals(7L, api.favorites().tracks.single().asTrack().key)
     }
+    @Test fun favoriteEntryRetainsOuterIdWhenNestedMetadataHasNoId() = runBlocking {
+        body = """{"tracks":[{"track_id":42,"track":{"title":"Song","ready":true}}]}"""
+        assertEquals(42L, api.favorites().tracks.single().asTrack().key)
+    }
+
+    @Test fun favoriteStartsTappedTrackInFullQueueAndNextUsesThatSession() = runBlocking {
+        body = """{"session_id":"favorites-session","current":{"id":42},"fixed":true,"mode":"favorites","tracks":[{"id":21},{"id":42},{"id":84}],"queue":null}"""
+        val reply = api.playFavorite(42)
+        val request = requests.take()
+        assertEquals("POST", request.first)
+        assertEquals("/api/mixes/favorites/play", request.second)
+        assertEquals(42L, Json.parseToJsonElement(request.third).jsonObject.getValue("start_track_id").jsonPrimitive.content.toLong())
+        assertEquals(42L, reply.current!!.key)
+        assertEquals(listOf(21L,42L,84L), reply.tracks.map { it.key })
+        assertTrue(reply.fixed)
+        body = """{"session_id":"favorites-session","next":{"id":84},"fixed":true,"tracks":[{"id":21},{"id":42},{"id":84}]}"""
+        val next = api.event("skip",42,reply.sessionId,null,10.0,180.0,8.0)
+        val event = requests.take()
+        assertEquals("/api/events", event.second)
+        assertEquals("favorites-session", Json.parseToJsonElement(event.third).jsonObject.getValue("session_id").jsonPrimitive.content)
+        assertEquals(84L, next.next!!.key)
+    }
+
+    @Test fun favoriteMustNotSilentlyStartFirstTrackWhenServerIgnoresSelection() = runBlocking {
+        body = """{"session_id":"s","current":{"id":21},"fixed":true,"tracks":[{"id":21},{"id":42}]}"""
+        try { api.playFavorite(42); fail("Wrong favorite accepted") }
+        catch (_: IllegalStateException) { }
+        Unit
+    }
     @Test fun previousUsesServerHistoryAndCurrentTrack() = runBlocking {
         body = """{"session_id":"s","current":{"id":42},"queue":[{"track_id":43}],"fixed":false}"""
         val reply = api.previous("s")

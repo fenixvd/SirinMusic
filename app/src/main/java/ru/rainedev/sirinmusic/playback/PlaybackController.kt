@@ -2,6 +2,9 @@ package ru.rainedev.sirinmusic.playback
 
 import android.content.Context
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import android.media.AudioManager
 import androidx.core.content.ContextCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -69,6 +72,7 @@ class PlaybackController(
 
     private var loadJob: Job? = null
     private var generation = 0
+    private val startGate = PlaybackStartGate()
     private var ticker: Job? = null
     private var listenedSec = 0.0
     private var startedReported = false
@@ -78,6 +82,19 @@ class PlaybackController(
     private var restoreJob: Job? = null
     private val syncMutex = Mutex()
 
+    // ExoPlayer's noisy handler pauses its current stream. This receiver also
+    // cancels starts that are still awaiting /play or playback ownership.
+    private val noisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) setPlaying(false)
+        }
+    }
+
+    init {
+        ContextCompat.registerReceiver(context.applicationContext, noisyReceiver,
+            IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_NOT_EXPORTED)
+    }
+
     val player: ExoPlayer by lazy { buildPlayer() }
     val sessionPlayer: SessionPlayer by lazy { SessionPlayer(this) }
 
@@ -86,13 +103,19 @@ class PlaybackController(
         val http = AuthenticatedDataSourceFactory(api)
         return ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(http))
-            .setAudioAttributes(AudioAttributes.DEFAULT, /* handleAudioFocus = */ true)
+            .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), /* handleAudioFocus = */ true)
             .setHandleAudioBecomingNoisy(true)
             .build()
             .also { it.addListener(PlayerEvents()) }
     }
 
     private inner class PlayerEvents : Player.Listener {
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY) {
+                startGate.pause()
+            }
+        }
         override fun onPlayerError(error: PlaybackException) {
             _ui.update { it.copy(error = "Не удалось воспроизвести: ${error.errorCodeName}", busy = false) }
         }
@@ -133,6 +156,7 @@ class PlaybackController(
     fun playMix(kind: String) = load { api.playMix(kind) }
 
     fun playTrack(trackId: Long) = load { api.playTrack(trackId) }
+    fun playFavorite(trackId: Long) = load { api.playFavorite(trackId) }
 
     fun playArtist(artist: String) = load { api.playArtist(artist) }
 
@@ -145,10 +169,18 @@ class PlaybackController(
     private fun load(block: suspend () -> ru.rainedev.sirinmusic.data.RadioStart) {
         loadJob?.cancel()
         generation++
+        val requestGeneration = generation
+        val startTicket = startGate.requestPlay()
         loadJob = scope.launch {
             _ui.update { it.copy(busy = true, error = null) }
             runCatching { block() }
                 .onSuccess { reply ->
+                    if (generation != requestGeneration) return@onSuccess
+                    val current = reply.current?.takeIf { it.key > 0 && it.ready }
+                    if (current == null) {
+                        _ui.update { it.copy(busy = false, error = "Сервер не вернул доступный трек") }
+                        return@onSuccess
+                    }
                     _ui.update {
                         it.copy(
                             sessionId = reply.sessionId ?: it.sessionId,
@@ -163,9 +195,9 @@ class PlaybackController(
                             busy = false,
                         )
                     }
-                    reply.current?.let { play(it) }
+                    play(current, startTicket)
                 }
-                .onFailure { e -> if (e is CancellationException) throw e else _ui.update { it.copy(busy = false, error = e.message) } }
+                .onFailure { e -> if (e is CancellationException) throw e else if (generation == requestGeneration) _ui.update { it.copy(busy = false, error = e.message) } }
         }
     }
 
@@ -174,11 +206,19 @@ class PlaybackController(
     fun togglePlay() = setPlaying(!player.playWhenReady)
 
     fun setPlaying(playing: Boolean) {
-        if (!playing) { player.pause(); return }
+        if (!playing) {
+            startGate.pause()
+            if (_ui.value.current != null) {
+                val wasPlaying = player.isPlaying
+                player.pause()
+                if (!wasPlaying && ownsPlayback) syncOnce()
+            }
+            return
+        }
         if (_ui.value.busy) return
         if (_ui.value.ended) { _ui.value.current?.let { playTrack(it.key) }; return }
         if (_ui.value.current == null) return
-        beginPlayback(generation)
+        beginPlayback(generation, startGate.requestPlay())
     }
 
     fun seekTo(sec: Double) {
@@ -195,12 +235,13 @@ class PlaybackController(
         val session = snapshot.sessionId ?: return@launch
         if (snapshot.busy) return@launch
         val requestGeneration = generation
+        val startTicket = startGate.requestPlay()
         _ui.update { it.copy(busy = true, error = null) }
         try {
             val reply = api.previous(session)
             if (requestGeneration == generation) {
                 _ui.update { it.copy(queue = if (reply.fixed) reply.tracks else reply.queue, fixed = reply.fixed) }
-                reply.current?.let { play(it) }
+                reply.current?.let { play(it, startTicket) }
             }
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { if (requestGeneration == generation) _ui.update { it.copy(error = e.message) } }
@@ -240,13 +281,14 @@ class PlaybackController(
         val session = _ui.value.sessionId ?: return
         if (_ui.value.busy) return
         val requestGeneration = generation
+        val startTicket = startGate.requestPlay()
         _ui.update { it.copy(busy = true, error = null) }
         scope.launch {
             try {
                 val reply = if (index != null) api.jumpIndex(session, index) else api.jump(session, requireNotNull(trackId))
                 if (requestGeneration == generation) {
                     _ui.update { it.copy(queue = if (reply.fixed) reply.tracks else reply.queue) }
-                    reply.current?.let { play(it) }
+                    reply.current?.let { play(it, startTicket) }
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { if (requestGeneration == generation) _ui.update { it.copy(error = e.message) } }
@@ -280,6 +322,7 @@ class PlaybackController(
         val cur = snapshot.current ?: return
         if (snapshot.busy) return
         val requestGeneration = generation
+        val startTicket = startGate.ticket
         _ui.update { it.copy(busy = true, error = null) }
         try {
             if (!saveRemoteState(!ownsPlayback, requestGeneration)) return
@@ -289,12 +332,12 @@ class PlaybackController(
             if (requestGeneration != generation) return
             applyQueue(reply)
             when (advanceAction(reply, snapshot.fixed)) {
-                AdvanceAction.PLAY_NEXT -> play(requireNotNull(reply.next))
+                AdvanceAction.PLAY_NEXT -> play(requireNotNull(reply.next), startTicket)
                 AdvanceAction.STOP -> {
                     player.pause()
                     _ui.update { it.copy(queue = emptyList(), ended = true) }
                 }
-                AdvanceAction.START_RADIO -> startRadio()
+                AdvanceAction.START_RADIO -> if (startGate.allows(startTicket)) startRadio()
             }
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { if (requestGeneration == generation) _ui.update { it.copy(error = e.message) } }
@@ -311,10 +354,10 @@ class PlaybackController(
         }
     }
 
-    private fun play(track: Track) {
+    private fun play(track: Track, startTicket: Long) {
         generation++
         installTrack(track, 0.0, 0.0, resumed = false)
-        beginPlayback(generation)
+        if (startGate.allows(startTicket)) beginPlayback(generation, startTicket)
     }
 
     private fun installTrack(track: Track, position: Double, listened: Double, resumed: Boolean) {
@@ -343,15 +386,21 @@ class PlaybackController(
         player.prepare()
     }
 
-    private fun beginPlayback(expectedGeneration: Int) {
+    private fun beginPlayback(expectedGeneration: Int, startTicket: Long) {
         _ui.update { it.copy(busy = true, error = null) }
         scope.launch {
             try {
+                if (!startGate.allows(startTicket)) return@launch
                 if (saveRemoteState(true, expectedGeneration, playing = true) && generation == expectedGeneration) {
                     ownsPlayback = true
-                    player.play()
-                    startPlaybackService()
-                    if (!startedReported) { startedReported = true; sendSimple("track_start") }
+                    if (startGate.allows(startTicket)) {
+                        player.play()
+                        startPlaybackService()
+                        if (!startedReported) { startedReported = true; sendSimple("track_start") }
+                    } else {
+                        // A disconnect/pause arrived while the claim was in flight.
+                        saveRemoteState(false, expectedGeneration, playing = false)
+                    }
                 }
             } finally { if (generation == expectedGeneration) _ui.update { it.copy(busy = false) } }
         }
@@ -428,6 +477,7 @@ class PlaybackController(
     }
 
     fun stop() {
+        startGate.pause()
         val snapshot = _ui.value
         val stoppedState = snapshot.current?.takeIf { ownsPlayback && !syncUnavailable }?.let {
             PlaybackState(snapshot.sessionId.orEmpty(), it.key,
