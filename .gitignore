@@ -36,3 +36,6 @@ signing.properties
 *.log
 .DS_Store
 Thumbs.db
+
+# Кеш локальных Python-проверок версии
+__pycache__/

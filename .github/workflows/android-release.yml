@@ -30,8 +30,7 @@ jobs:
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || { echo 'Use a tag such as v0.1.0'; exit 1; }
           test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
           git merge-base --is-ancestor HEAD origin/master
-          printf 'SIRIN_VERSION_NAME=%s\n' "${RELEASE_TAG#v}" >> "$GITHUB_ENV"
-          printf 'SIRIN_VERSION_CODE=%s\n' "$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+          python3 tools/release-version.py --tag "$RELEASE_TAG"
       - uses: ./.github/actions/android-environment
       - name: Restore signing key
         env:

@@ -1,0 +1,1 @@
+Fixed next-track navigation from favorites, pause on headset disconnection, and opening the player from playback notifications.

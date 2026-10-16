@@ -1,0 +1,36 @@
+Categories:
+  - Multimedia
+License: MIT
+AuthorName: RaineDev
+SourceCode: https://github.com/fenixvd/SirinMusic
+IssueTracker: https://github.com/fenixvd/SirinMusic/issues
+Changelog: https://github.com/fenixvd/SirinMusic/releases
+
+AutoName: Sirin Music
+
+RepoType: git
+Repo: https://github.com/fenixvd/SirinMusic.git
+Binaries: https://github.com/fenixvd/SirinMusic/releases/download/v%v/SirinMusic-%v.apk
+
+Builds:
+  - versionName: 2.0.2
+    versionCode: 5
+    commit: v2.0.2
+    subdir: app
+    sudo:
+      - apt-get update
+      - apt-get install -y openjdk-17-jdk-headless
+      - echo "deb https://deb.debian.org/debian trixie main" > /etc/apt/sources.list.d/trixie.list
+      - apt-get update
+      - apt-get install -y -t trixie openjdk-21-jdk-headless
+      - update-alternatives --set java /usr/lib/jvm/java-21-openjdk-amd64/bin/java
+    gradle:
+      - yes
+    prebuild: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0'
+
+AllowedAPKSigningKeys: 1aea6793f9910ad10ff8aff19343eabf66d92b51a590ada23e266cdbf9346e52
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^v[0-9]+\.[0-9]+\.[0-9]+$
+CurrentVersion: 2.0.2
+CurrentVersionCode: 5
