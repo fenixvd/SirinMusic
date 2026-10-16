@@ -43,24 +43,35 @@ class MainActivity : ComponentActivity() {
         // death, restored from the Intent by its saved marker); a used one must not come back.
         if (savedInstanceState == null) linkFrom(intent)?.let(vm.pendingLink::offer)
         else vm.pendingLink.restore(linkFrom(intent), savedInstanceState.getString(KEY_PENDING_LINK))
+        vm.pendingPlayerNavigation.restore(
+            intent?.action == PendingPlayerNavigation.ACTION_OPEN_PLAYER,
+            savedInstanceState?.getBoolean(KEY_PENDING_PLAYER),
+        )
         setContent {
             val appearance by app.settings.appearance.collectAsStateWithLifecycle()
-            SirinMusicTheme(appearance) { Surface(Modifier.fillMaxSize()) { SirinContent(app) } }
+            SirinMusicTheme(appearance) { Surface(Modifier.fillMaxSize()) {
+                SirinContent(app, onPlayerNavigationConsumed = {
+                    if (intent?.action == PendingPlayerNavigation.ACTION_OPEN_PLAYER) {
+                        setIntent(Intent(intent).setAction(null))
+                    }
+                })
+            } }
         }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        val link = linkFrom(intent) ?: return
         // The accepted link becomes the Activity's Intent, so a recreated Activity
         // reads this link (and matches its saved marker), not the launch one.
         setIntent(intent)
-        vm.pendingLink.offer(link)
+        linkFrom(intent)?.let(vm.pendingLink::offer)
+        if (intent.action == PendingPlayerNavigation.ACTION_OPEN_PLAYER) vm.pendingPlayerNavigation.offer()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         vm.pendingLink.marker()?.let { outState.putString(KEY_PENDING_LINK, it) }
+        outState.putBoolean(KEY_PENDING_PLAYER, vm.pendingPlayerNavigation.requested.value)
     }
 
     private fun linkFrom(intent: Intent?): ConnectLink? =
@@ -68,6 +79,7 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val KEY_PENDING_LINK = "pending_link_marker"
+        const val KEY_PENDING_PLAYER = "pending_player_navigation"
     }
 }
 
@@ -75,10 +87,11 @@ private data class Destination(val route: String, val label: String, val icon: I
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SirinContent(app: SirinApp) {
+private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) {
     val vm: AppViewModel = viewModel(factory = AppViewModel.Factory(app))
     val state by vm.state.collectAsStateWithLifecycle()
     val pendingLink by vm.pendingLink.value.collectAsStateWithLifecycle()
+    val openPlayer by vm.pendingPlayerNavigation.requested.collectAsStateWithLifecycle()
     val player by vm.playback.ui.collectAsStateWithLifecycle()
     val owner = LocalLifecycleOwner.current
     DisposableEffect(owner, vm) {
@@ -123,6 +136,13 @@ private fun SirinContent(app: SirinApp) {
         }
     }
     fun openNow() { nav.navigate("now") { launchSingleTop = true } }
+    LaunchedEffect(openPlayer, entry) {
+        if (openPlayer && entry != null) {
+            openNow()
+            vm.pendingPlayerNavigation.consume()
+            onPlayerNavigationConsumed()
+        }
+    }
     val title = when {
         route == "now" -> "Сейчас играет"
         route == "lyrics" -> "Текст песни"
@@ -163,17 +183,18 @@ private fun SirinContent(app: SirinApp) {
                 NavHost(modifier = Modifier.widthIn(max = if (route == "profile" || route == "lyrics") 760.dp else 1200.dp).fillMaxSize(), navController = nav, startDestination = "home") {
                     composable("home") {
                         HomeScreen(state.mixes, state.favorites, player.maturity, vm::artworkUrl,
-                            { vm.playback.startRadio() }, { vm.playback.playMix(it) }, { vm.playback.playTrack(it) }, padding,
+                            { vm.playback.startRadio() }, { vm.playback.playMix(it) }, { vm.playback.playFavorite(it) }, padding,
                             onFavorites = { nav.navigate("favorites") }, onShare = vm::shareRadio,
                             onRefreshMixes = vm::refreshServerMixes, refreshingMixes = "mix-refresh" in state.busy, sharing = "shares" in state.busy)
                     }
                     composable("library") {
                         LibraryScreen(state, player.ratings, player.ratingPending, player.sessionId != null, vm::artworkUrl, { vm.playback.playTrack(it) },
                             { vm.playback.playArtist(it) }, { a, al -> vm.playback.playAlbum(a, al) }, vm::toggleFavorite,
-                            vm::toggleArtistFavorite, vm::toggleAlbumFavorite, vm.playback::rate, { addTrackId = it }, padding)
+                            vm::toggleArtistFavorite, vm::toggleAlbumFavorite, vm.playback::rate, { addTrackId = it }, padding,
+                            onFavoriteTrack = vm.playback::playFavorite)
                     }
                     composable("favorites") {
-                        LibraryScreen(state, player.ratings, player.ratingPending, player.sessionId != null, vm::artworkUrl, { vm.playback.playTrack(it) },
+                        LibraryScreen(state, player.ratings, player.ratingPending, player.sessionId != null, vm::artworkUrl, { vm.playback.playFavorite(it) },
                             { vm.playback.playArtist(it) }, { a, al -> vm.playback.playAlbum(a, al) }, vm::toggleFavorite,
                             vm::toggleArtistFavorite, vm::toggleAlbumFavorite, vm.playback::rate, { addTrackId = it }, padding, favoritesOnly = true)
                     }

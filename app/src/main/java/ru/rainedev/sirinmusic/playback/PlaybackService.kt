@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import ru.rainedev.sirinmusic.SirinApp
 import ru.rainedev.sirinmusic.MainActivity
+import ru.rainedev.sirinmusic.PendingPlayerNavigation
 
 /**
  * Делает из приложения настоящий телефонный плеер: шторка, экран блокировки,
@@ -79,7 +80,9 @@ class PlaybackService : MediaSessionService() {
                 PendingIntent.getActivity(
                     this,
                     0,
-                    Intent(this, MainActivity::class.java),
+                    Intent(this, MainActivity::class.java)
+                        .setAction(PendingPlayerNavigation.ACTION_OPEN_PLAYER)
+                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                 ),
             )

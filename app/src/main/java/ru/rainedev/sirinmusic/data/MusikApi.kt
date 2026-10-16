@@ -158,6 +158,14 @@ class MusikApi(private val settings: ConnectionSettings) {
 
     suspend fun playTrack(trackId: Long): RadioStart = post("/api/play", """{"track_id":$trackId}""")
 
+    /** Keep the server's favorites queue, starting at the tapped track. */
+    suspend fun playFavorite(trackId: Long): RadioStart {
+        require(trackId > 0) { "Некорректный идентификатор трека" }
+        val reply: RadioStart = post("/api/mixes/favorites/play", """{"start_track_id":$trackId}""")
+        check(reply.current?.key == trackId) { "Сервер не запустил выбранный трек из избранного" }
+        return reply
+    }
+
     suspend fun playArtist(artist: String): RadioStart =
         post("/api/play", """{"artist":${quote(artist)}}""")
 

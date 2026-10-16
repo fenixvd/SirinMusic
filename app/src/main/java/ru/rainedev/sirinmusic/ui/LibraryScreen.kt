@@ -23,7 +23,7 @@ fun LibraryScreen(state: AppState, ratings: Map<Long, String>, ratingPending: Se
     onTrack: (Long) -> Unit, onArtist: (String) -> Unit, onAlbum: (String, String) -> Unit,
     onFavorite: (Long) -> Unit, onArtistFavorite: (String) -> Unit, onAlbumFavorite: (String, String) -> Unit,
     onRate: (Long, String) -> Unit, onAddToPlaylist: (Long) -> Unit, contentPadding: PaddingValues,
-    favoritesOnly: Boolean = false, selectionMode: Boolean = false) {
+    favoritesOnly: Boolean = false, selectionMode: Boolean = false, onFavoriteTrack: (Long) -> Unit = onTrack) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var query by rememberSaveable { mutableStateOf("") }
     var favoritesFilter by rememberSaveable { mutableStateOf(favoritesOnly) }
@@ -71,7 +71,8 @@ fun LibraryScreen(state: AppState, ratings: Map<Long, String>, ratingPending: Se
                 0 -> items(shownTracks, key = { it.key }, span = { GridItemSpan(maxLineSpan) }) { t ->
                     TrackRow(t, artworkUrl, t.key in favoriteIds, ratings[t.key], "favorite:${t.key}" in state.busy,
                         hasSession && t.key !in ratingPending,
-                        { onTrack(t.key) }, { onFavorite(t.key) }, { onRate(t.key, it) }, { onAddToPlaylist(t.key) })
+                        { if (favoritesFilter && !selectionMode) onFavoriteTrack(t.key) else onTrack(t.key) },
+                        { onFavorite(t.key) }, { onRate(t.key, it) }, { onAddToPlaylist(t.key) })
                 }
                 1 -> items(shownArtists, key = { it.artist }) { a ->
                     val cover = artworkUrl(a.artwork ?: a.coverTrackId?.let { "/api/artwork/$it" }, 96)

@@ -17,8 +17,8 @@ android {
         applicationId = "ru.rainedev.sirinmusic"
         minSdk = 27
         targetSdk = 36
-        versionCode = providers.environmentVariable("SIRIN_VERSION_CODE").orNull?.toInt() ?: 3
-        versionName = providers.environmentVariable("SIRIN_VERSION_NAME").orNull ?: "2.0.0"
+        versionCode = providers.environmentVariable("SIRIN_VERSION_CODE").orNull?.toInt() ?: 4
+        versionName = providers.environmentVariable("SIRIN_VERSION_NAME").orNull ?: "2.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
