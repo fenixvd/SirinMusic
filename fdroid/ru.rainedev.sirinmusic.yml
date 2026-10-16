@@ -18,11 +18,10 @@ Builds:
     commit: v2.0.2
     subdir: app
     sudo:
+      - echo "deb https://deb.debian.org/debian bookworm main" > /etc/apt/sources.list.d/bookworm.list
+      - echo "deb https://security.debian.org/debian-security bookworm-security main" >> /etc/apt/sources.list.d/bookworm.list
       - apt-get update
-      - apt-get install -y openjdk-17-jdk-headless
-      - echo "deb https://deb.debian.org/debian trixie main" > /etc/apt/sources.list.d/trixie.list
-      - apt-get update
-      - apt-get install -y -t trixie openjdk-21-jdk-headless
+      - apt-get install -y openjdk-17-jdk-headless openjdk-21-jdk-headless
       - update-alternatives --set java /usr/lib/jvm/java-21-openjdk-amd64/bin/java
     gradle:
       - yes
