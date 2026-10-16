@@ -15,11 +15,10 @@ jobs:
   check-and-build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      SIRIN_VERSION_NAME: 2.0.0
-      SIRIN_VERSION_CODE: 3
     steps:
       - uses: actions/checkout@v7
+      - name: Check release version rules
+        run: python3 -m unittest discover -s tools -p 'test_*.py'
       - uses: ./.github/actions/android-environment
       - name: Unit tests, lint and debug APK
         run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
@@ -43,9 +42,6 @@ jobs:
     needs: check-and-build
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      SIRIN_VERSION_NAME: 2.0.0
-      SIRIN_VERSION_CODE: 3
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/android-environment
@@ -75,11 +71,11 @@ jobs:
           apk=app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose "$apk"
           mkdir -p dev-files
-          cp "$apk" "dev-files/SirinMusic-${SIRIN_VERSION_NAME}.apk"
+          cp "$apk" "dev-files/SirinMusic-dev.apk"
           (cd dev-files && sha256sum ./*.apk > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v7
         with:
-          name: sirin-music-2.0.0
+          name: sirin-music-dev
           path: dev-files/
           if-no-files-found: error
       - name: Remove signing key

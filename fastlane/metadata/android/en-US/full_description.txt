@@ -1,0 +1,15 @@
+Sirin Music is a native Android client for the free and open source musik music server. Connect to your own server to stream your library, browse artists and albums, and listen to personal mixes and radio.
+
+Features:
+• Library search, favorites and playlists
+• Personal radio with likes, dislikes and discovery settings
+• Background playback, notification and headset controls
+• Lyrics and playback position synchronization between devices
+• Sign-in with a QR code, API token, or username and password
+• Material 3 interface with configurable colors and themes
+
+A compatible musik server and a network connection are required. Sirin does not include a music catalog or provide offline downloads. The current interface is in Russian.
+
+musik server source: https://github.com/torwin-job/musik
+
+Optional update checks contact GitHub to find stable Sirin releases. Automatic checks are disabled by default.

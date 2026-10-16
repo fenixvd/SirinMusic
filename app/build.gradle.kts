@@ -17,10 +17,16 @@ android {
         applicationId = "ru.rainedev.sirinmusic"
         minSdk = 27
         targetSdk = 36
-        versionCode = providers.environmentVariable("SIRIN_VERSION_CODE").orNull?.toInt() ?: 4
-        versionName = providers.environmentVariable("SIRIN_VERSION_NAME").orNull ?: "2.0.1"
+        versionCode = 5
+        versionName = "2.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // F-Droid rejects the encrypted Google Play dependency metadata block.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 
     val keystorePath = providers.environmentVariable("SIRIN_KEYSTORE_PATH").orNull

@@ -1,0 +1,1 @@
+Updated APK for F-Droid requirements: stable build versions, preinstalled JDKs, and disabled encrypted Google Play dependency metadata.
