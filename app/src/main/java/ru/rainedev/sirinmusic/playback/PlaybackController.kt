@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic.playback
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import android.content.Context
 import android.content.Intent
 import android.content.BroadcastReceiver
@@ -81,6 +83,8 @@ class PlaybackController(
     private var syncTicker: Job? = null
     private var restoreJob: Job? = null
     private val syncMutex = Mutex()
+    private val pendingClose = PendingPlaybackClose()
+    private val failures = PlaybackFailures()
 
     // ExoPlayer's noisy handler pauses its current stream. This receiver also
     // cancels starts that are still awaiting /play or playback ownership.
@@ -117,12 +121,48 @@ class PlaybackController(
             }
         }
         override fun onPlayerError(error: PlaybackException) {
-            _ui.update { it.copy(error = "Не удалось воспроизвести: ${error.errorCodeName}", busy = false) }
+            if (_ui.value.busy) {
+                _ui.update { it.copy(error = strings(R.string.playback_controller_1, error.errorCodeName)) }
+                return // A pending source change or close request owns the transition.
+            }
+            _ui.update { it.copy(error = strings(R.string.playback_controller_1, error.errorCodeName), busy = false) }
+            val current = _ui.value.current ?: return
+            if (player.currentMediaItem?.mediaId != current.key.toString()) return
+            val mediaFailure = error.errorCode in setOf(
+                PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+                PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+                PlaybackException.ERROR_CODE_DECODING_FAILED,
+                PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+                PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+                PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+                PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+            )
+            when (failures.failed(mediaFailure, player.playWhenReady && startGate.allows(startGate.ticket))) {
+                PlaybackFailureAction.SHOW_ERROR -> Unit
+                PlaybackFailureAction.RETRY_COMPATIBLE -> {
+                    val position = player.currentPosition.coerceAtLeast(0)
+                    val item = player.currentMediaItem?.buildUpon()?.setUri(api.compatibleStreamUrl(current))?.build() ?: return
+                    // Keep this impression, position and listening time; do not emit another track_start.
+                    player.setMediaItem(item, position)
+                    player.prepare()
+                    player.play()
+                    _ui.update { it.copy(error = null) }
+                }
+                PlaybackFailureAction.ADVANCE -> {
+                    val expected = generation
+                    scope.launch { if (generation == expected) reportAndAdvance("track_end", "unplayable") }
+                }
+                PlaybackFailureAction.STOP -> {
+                    startGate.pause()
+                    player.pause()
+                    _ui.update { it.copy(error = strings(R.string.playback_controller_2)) }
+                }
+            }
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _ui.update { it.copy(isPlaying = isPlaying) }
-            if (isPlaying) { startTicker(); startSyncTicker() }
+            if (isPlaying) { failures.playing(); startTicker(); startSyncTicker() }
             else {
                 ticker?.cancel(); syncTicker?.cancel()
                 if (ownsPlayback) syncOnce()
@@ -131,7 +171,8 @@ class PlaybackController(
 
         override fun onPlaybackStateChanged(state: Int) {
             if (state == Player.STATE_ENDED) {
-                scope.launch { reportAndAdvance("track_end") }
+                val expected = generation
+                scope.launch { if (generation == expected) reportAndAdvance("track_end") }
             }
         }
     }
@@ -178,7 +219,7 @@ class PlaybackController(
                     if (generation != requestGeneration) return@onSuccess
                     val current = reply.current?.takeIf { it.key > 0 && it.ready }
                     if (current == null) {
-                        _ui.update { it.copy(busy = false, error = "Сервер не вернул доступный трек") }
+                        _ui.update { it.copy(busy = false, error = strings(R.string.playback_controller_3)) }
                         return@onSuccess
                     }
                     _ui.update {
@@ -317,7 +358,7 @@ class PlaybackController(
     }
 
     /** Only skip/end advance a session; ratings leave the current track in place. */
-    private suspend fun reportAndAdvance(type: String) {
+    private suspend fun reportAndAdvance(type: String, reason: String = if (type == "skip") "skipped" else "completed") {
         val snapshot = _ui.value
         val cur = snapshot.current ?: return
         if (snapshot.busy) return
@@ -327,17 +368,20 @@ class PlaybackController(
         try {
             if (!saveRemoteState(!ownsPlayback, requestGeneration)) return
             ownsPlayback = true
-            val reply = api.event(type, cur.key, snapshot.sessionId, cur.impressionId,
-                snapshot.positionSec, snapshot.durationSec, listenedSec)
+            val event = pendingClose.event(type, snapshot.sessionId, cur, snapshot.positionSec,
+                snapshot.durationSec, listenedSec, reason)
+            val reply = api.event(event.type, event.trackId, event.sessionId, event.impressionId,
+                event.position, event.duration, event.listened, eventId = event.id, reason = event.reason)
             if (requestGeneration != generation) return
             applyQueue(reply)
-            when (advanceAction(reply, snapshot.fixed)) {
+            when (advanceAction(reply, snapshot.fixed, cur)) {
                 AdvanceAction.PLAY_NEXT -> play(requireNotNull(reply.next), startTicket)
                 AdvanceAction.STOP -> {
                     player.pause()
                     _ui.update { it.copy(queue = emptyList(), ended = true) }
                 }
                 AdvanceAction.START_RADIO -> if (startGate.allows(startTicket)) startRadio()
+                AdvanceAction.KEEP_CURRENT -> Unit // Duplicate close: never seek/restart the same impression.
             }
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { if (requestGeneration == generation) _ui.update { it.copy(error = e.message) } }
@@ -361,6 +405,8 @@ class PlaybackController(
     }
 
     private fun installTrack(track: Track, position: Double, listened: Double, resumed: Boolean) {
+        pendingClose.clear()
+        failures.newTrack()
         ownsPlayback = false
         syncTicker?.cancel()
         listenedSec = listened.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
@@ -394,6 +440,8 @@ class PlaybackController(
                 if (saveRemoteState(true, expectedGeneration, playing = true) && generation == expectedGeneration) {
                     ownsPlayback = true
                     if (startGate.allows(startTicket)) {
+                        // An error leaves ExoPlayer idle. An explicit Play must prepare it again.
+                        if (player.playbackState == Player.STATE_IDLE) player.prepare()
                         player.play()
                         startPlaybackService()
                         if (!startedReported) { startedReported = true; sendSimple("track_start") }
@@ -438,16 +486,16 @@ class PlaybackController(
                     generation++
                     player.pause()
                     syncTicker?.cancel()
-                    _ui.update { it.copy(busy = false, error = "Воспроизведение продолжено на другом устройстве") }
+                    _ui.update { it.copy(busy = false, error = strings(R.string.playback_controller_4)) }
                     false
                 } else true
             } catch (e: CancellationException) { throw e }
             catch (e: ApiException) {
                 if (generation != expected) false
                 else if (e.code == 404) { syncUnavailable = true; true }
-                else { if (generation == expected) _ui.update { it.copy(error = "Не удалось синхронизировать плеер: ${e.message}") }; false }
+                else { if (generation == expected) _ui.update { it.copy(error = strings(R.string.playback_controller_5, e.message)) }; false }
             } catch (_: Exception) {
-                if (generation == expected) _ui.update { it.copy(error = "Нет связи для синхронизации плеера") }
+                if (generation == expected) _ui.update { it.copy(error = strings(R.string.playback_controller_6)) }
                 false
             }
         }
@@ -471,12 +519,14 @@ class PlaybackController(
                 installTrack(track, safePlaybackPosition(saved.positionSec, track.duration ?: 0.0), saved.listenedSec, resumed = true)
             } catch (e: CancellationException) { throw e }
             catch (e: ApiException) {
-                if (generation == expected && e.code != 404) _ui.update { it.copy(error = "Не удалось восстановить плеер") }
+                if (generation == expected && e.code != 404) _ui.update { it.copy(error = strings(R.string.playback_controller_7)) }
             } catch (_: Exception) { /* Offline startup keeps the local player idle. */ }
         }
     }
 
     fun stop() {
+        pendingClose.clear()
+        failures.reset()
         startGate.pause()
         val snapshot = _ui.value
         val stoppedState = snapshot.current?.takeIf { ownsPlayback && !syncUnavailable }?.let {

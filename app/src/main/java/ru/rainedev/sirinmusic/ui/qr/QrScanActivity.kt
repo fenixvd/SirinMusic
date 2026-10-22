@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic.ui.qr
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
@@ -43,7 +45,7 @@ import kotlinx.coroutines.launch
 import ru.rainedev.sirinmusic.ui.theme.SirinMusicTheme
 
 /** Камера привязана к видимому экрану; результат совместим с существующим ScanContract. */
-class QrScanActivity : ComponentActivity() {
+class QrScanActivity : ru.rainedev.sirinmusic.SirinActivity() {
     private var completed = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -83,7 +85,7 @@ class QrScanActivity : ComponentActivity() {
                 busy = true
                 try {
                     val text = readQrImage(this@QrScanActivity, uri)
-                    if (text == null || !complete(text)) error = "На изображении нет QR-кода подключения musik"
+                    if (text == null || !complete(text)) error = strings(R.string.qr_scan_activity_1)
                 } finally { busy = false }
             }
         }
@@ -97,14 +99,14 @@ class QrScanActivity : ComponentActivity() {
                     override fun previewStopped() = Unit
                     override fun cameraClosed() = Unit
                     override fun cameraError(failure: Exception) {
-                        error = "Не удалось открыть камеру. Можно выбрать изображение или ввести ссылку."
+                        error = strings(R.string.qr_scan_activity_2)
                     }
                 })
                 barcodeView.decoderFactory = DefaultDecoderFactory(listOf(BarcodeFormat.QR_CODE))
                 decodeContinuous(object : BarcodeCallback {
                     override fun barcodeResult(result: BarcodeResult) {
                         if (manual || busy || completed) return
-                        if (!complete(result.text)) error = "Это не QR-код подключения musik"
+                        if (!complete(result.text)) error = strings(R.string.qr_scan_activity_3)
                     }
                 })
             }
@@ -119,25 +121,25 @@ class QrScanActivity : ComponentActivity() {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Сканировать QR") },
-                    navigationIcon = { IconButton(onClick = { finish() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Назад") } },
+                    title = { Text(strings(R.string.qr_scan_activity_4)) },
+                    navigationIcon = { IconButton(onClick = { finish() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, strings(R.string.about_activity_2)) } },
                     actions = {
                         if (packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH)) IconButton(
                             enabled = permitted, onClick = { torch = !torch },
                         ) { Icon(if (torch) Icons.Outlined.FlashlightOff else Icons.Outlined.FlashlightOn,
-                            if (torch) "Выключить фонарик" else "Включить фонарик") }
+                            if (torch) strings(R.string.qr_scan_activity_5) else strings(R.string.qr_scan_activity_6)) }
                     },
                 )
             },
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("Наведи камеру на QR подключения в настройках аккаунта musik", style = MaterialTheme.typography.titleMedium)
+                Text(strings(R.string.qr_scan_activity_7), style = MaterialTheme.typography.titleMedium)
                 Box(Modifier.fillMaxWidth().weight(1f).clip(MaterialTheme.shapes.extraLarge).background(Color.Black), contentAlignment = Alignment.Center) {
                     if (permitted) AndroidView(factory = { camera }, modifier = Modifier.fillMaxSize())
                     else Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Для сканирования нужен доступ к камере", color = Color.White)
+                        Text(strings(R.string.qr_scan_activity_8), color = Color.White)
                         Spacer(Modifier.height(16.dp))
-                        Button(onClick = { cameraPermission.launch(Manifest.permission.CAMERA) }) { Text("Разрешить камеру") }
+                        Button(onClick = { cameraPermission.launch(Manifest.permission.CAMERA) }) { Text(strings(R.string.qr_scan_activity_9)) }
                     }
                     if (busy) CircularProgressIndicator()
                 }
@@ -145,22 +147,22 @@ class QrScanActivity : ComponentActivity() {
                 OutlinedButton(
                     enabled = !busy, modifier = Modifier.fillMaxWidth(),
                     onClick = { imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                ) { Text("Выбрать изображение с QR") }
-                TextButton(modifier = Modifier.fillMaxWidth(), onClick = { manual = true; error = null }) { Text("Ввести ссылку подключения") }
+                ) { Text(strings(R.string.qr_scan_activity_10)) }
+                TextButton(modifier = Modifier.fillMaxWidth(), onClick = { manual = true; error = null }) { Text(strings(R.string.qr_scan_activity_11)) }
             }
         }
         if (manual) AlertDialog(
-            onDismissRequest = { manual = false }, title = { Text("Подключить сервер") },
+            onDismissRequest = { manual = false }, title = { Text(strings(R.string.qr_scan_activity_12)) },
             text = {
                 Column {
                     OutlinedTextField(value = typed, onValueChange = { typed = it; error = null },
-                        label = { Text("Ссылка подключения musik") }, placeholder = { Text("musik://connect?…") }, singleLine = true,
+                        label = { Text(strings(R.string.qr_scan_activity_13)) }, placeholder = { Text("musik://connect?…") }, singleLine = true,
                         isError = error != null)
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 }
             },
-            confirmButton = { TextButton(onClick = { if (!complete(typed)) error = "Введи корректную ссылку подключения musik" }) { Text("Подключить") } },
-            dismissButton = { TextButton(onClick = { manual = false; error = null }) { Text("Отмена") } },
+            confirmButton = { TextButton(onClick = { if (!complete(typed)) error = strings(R.string.qr_scan_activity_14) }) { Text(strings(R.string.qr_scan_activity_15)) } },
+            dismissButton = { TextButton(onClick = { manual = false; error = null }) { Text(strings(R.string.account_activity_71)) } },
         )
     }
 }

@@ -11,7 +11,7 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 
-class AccountApiTest {
+class AccountApiTest : ru.rainedev.sirinmusic.LocalizedTest() {
     private lateinit var server: HttpServer
     private lateinit var api: AccountApi
     private var body = """{"ok":true,"multi_user":true,"local_account":true,"user":{"id":"u","display_name":"User","roles":["admin"]},"profiles":[]}"""

@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic.ui
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -55,6 +57,8 @@ fun NowPlayingScreen(
     onAddToPlaylist: () -> Unit,
     favoriteBusy: Boolean,
     onPrevious: () -> Unit,
+    api: ru.rainedev.sirinmusic.data.MusikApi,
+    profileKey: String,
 ) {
     val track = ui.current
     val controls: @Composable () -> Unit = {
@@ -65,7 +69,7 @@ fun NowPlayingScreen(
                 BoxWithConstraints { Artwork(artworkUrl(track?.artworkPath, 640), maxWidth.coerceAtMost(320.dp), corner = 20.dp) }
 
                 Text(
-                    track?.title ?: "Ничего не играет",
+                    track?.title ?: strings(R.string.lyrics_screen_2),
                     style = MaterialTheme.typography.headlineSmall,
                     textAlign = TextAlign.Center,
                     maxLines = 2,
@@ -82,12 +86,14 @@ fun NowPlayingScreen(
                 )
                 if (track?.explanation != null) {
                     Text(
-                        "почему: ${track.explanation}",
+                        strings(R.string.now_playing_screen_1, track.explanation),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp),
                     )
                 }
+
+                TrackPassportCard(api, track?.key, profileKey)
 
                 Slider(
                     value = ui.positionSec.toFloat().coerceIn(0f, (ui.durationSec.toFloat()).coerceAtLeast(1f)),
@@ -104,26 +110,26 @@ fun NowPlayingScreen(
                 if (ui.busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 12.dp))
                 Row(Modifier.padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    IconButton(onClick = onPrevious, enabled = track != null && !ui.busy) { Icon(Icons.Rounded.SkipPrevious, "Предыдущий трек") }
+                    IconButton(onClick = onPrevious, enabled = track != null && !ui.busy) { Icon(Icons.Rounded.SkipPrevious, strings(R.string.now_playing_screen_2)) }
                     FilledIconButton(onClick = onToggle, enabled = track != null && !ui.busy, modifier = Modifier.size(72.dp)) {
                         Icon(if (ui.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            contentDescription = if (ui.isPlaying) "Пауза" else "Играть")
+                            contentDescription = if (ui.isPlaying) strings(R.string.mini_player_1) else strings(R.string.mini_player_2))
                     }
-                    IconButton(onClick = onSkip, enabled = track != null && !ui.busy) { Icon(Icons.Rounded.SkipNext, "Дальше") }
+                    IconButton(onClick = onSkip, enabled = track != null && !ui.busy) { Icon(Icons.Rounded.SkipNext, strings(R.string.mini_player_3)) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     val pending = track?.key in ui.ratingPending
                     IconButton(onClick = onLike, enabled = track != null && !pending && ui.ratings[track.key] != "like") {
-                        Icon(Icons.Rounded.ThumbUp, "Нравится", tint = if (ui.ratings[track?.key] == "like") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(Icons.Rounded.ThumbUp, strings(R.string.playback_service_2), tint = if (ui.ratings[track?.key] == "like") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     IconButton(onClick = onDislike, enabled = track != null && !pending && ui.ratings[track.key] != "dislike") {
-                        Icon(Icons.Rounded.ThumbDown, "Не нравится", tint = if (ui.ratings[track?.key] == "dislike") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(Icons.Rounded.ThumbDown, strings(R.string.now_playing_screen_3), tint = if (ui.ratings[track?.key] == "dislike") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     FavoriteButton(track != null && track.key in ui.favorites, track != null && !favoriteBusy, onFavorite)
                 }
                 Row {
-                    TextButton(onClick = onLyrics, enabled = track != null) { Text("Текст песни") }
-                    TextButton(onClick = onAddToPlaylist, enabled = track != null) { Text("В плейлист") }
+                    TextButton(onClick = onLyrics, enabled = track != null) { Text(strings(R.string.main_activity_7)) }
+                    TextButton(onClick = onAddToPlaylist, enabled = track != null) { Text(strings(R.string.now_playing_screen_4)) }
                 }
 
                 if (ui.error != null) {
@@ -138,7 +144,7 @@ fun NowPlayingScreen(
     }
     val queue: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
         if (ui.queue.isNotEmpty()) {
-            item { SectionTitle(if (ui.fixed) "Треки плейлиста" else "Дальше в очереди") }
+            item { SectionTitle(if (ui.fixed) strings(R.string.now_playing_screen_5) else strings(R.string.now_playing_screen_6)) }
             itemsIndexed(ui.queue, key = { index, t -> "$index:${t.key}" }) { index, t ->
                 RowCard(
                     artworkUrl = artworkUrl(t.artworkPath, 96),
@@ -148,7 +154,7 @@ fun NowPlayingScreen(
                 )
             }
         }
-        if (ui.queue.isEmpty()) item { Text("Очередь пуста", Modifier.padding(24.dp)) }
+        if (ui.queue.isEmpty()) item { Text(strings(R.string.now_playing_screen_7), Modifier.padding(24.dp)) }
     }
     BoxWithConstraints(Modifier.fillMaxSize().padding(contentPadding)) {
         if (maxWidth >= 840.dp) {

@@ -1,0 +1,1 @@
+Track details with audio measurements, genres and listening statistics. English and Russian interface, with system or manual language selection. Favorites-based recommendations. Duplicate playback events no longer restart tracks. Compatible MP3 retry and bounded recovery from unplayable files.

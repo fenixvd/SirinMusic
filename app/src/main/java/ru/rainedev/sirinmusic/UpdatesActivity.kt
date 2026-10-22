@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -20,7 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.rainedev.sirinmusic.ui.theme.SirinMusicTheme
 import ru.rainedev.sirinmusic.update.UpdatesSection
 
-class UpdatesActivity : ComponentActivity() {
+class UpdatesActivity : ru.rainedev.sirinmusic.SirinActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); enableEdgeToEdge()
@@ -31,8 +33,8 @@ class UpdatesActivity : ComponentActivity() {
         setContent {
             val appearance by app.settings.appearance.collectAsStateWithLifecycle()
             SirinMusicTheme(appearance) {
-                Scaffold(topBar = { TopAppBar(title = { Text("Обновления") }, navigationIcon = {
-                    IconButton(onClick = ::finish) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Назад") }
+                Scaffold(topBar = { TopAppBar(title = { Text(strings(R.string.updates_activity_1)) }, navigationIcon = {
+                    IconButton(onClick = ::finish) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, strings(R.string.about_activity_2)) }
                 }) }) { padding ->
                     Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
                         Column(Modifier.widthIn(max = 760.dp).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {

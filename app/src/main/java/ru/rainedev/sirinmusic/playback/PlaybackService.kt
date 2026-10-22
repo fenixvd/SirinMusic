@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic.playback
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Bundle
@@ -96,7 +98,7 @@ class PlaybackService : MediaSessionService() {
             }.distinctUntilChanged().collect { (id, liked, pending) ->
                 session?.setMediaButtonPreferences(listOf(
                     CommandButton.Builder(if (liked) CommandButton.ICON_THUMB_UP_FILLED else CommandButton.ICON_THUMB_UP_UNFILLED)
-                        .setDisplayName(if (liked) "Нравится — отмечено" else "Нравится")
+                        .setDisplayName(if (liked) strings(R.string.playback_service_1) else strings(R.string.playback_service_2))
                         .setSessionCommand(likeCommand)
                         .setEnabled(id != null && !liked && !pending)
                         .setSlots(CommandButton.SLOT_BACK_SECONDARY, CommandButton.SLOT_OVERFLOW)

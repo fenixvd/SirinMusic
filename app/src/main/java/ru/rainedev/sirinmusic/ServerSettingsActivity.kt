@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
@@ -34,7 +36,7 @@ import kotlinx.coroutines.withContext
 import ru.rainedev.sirinmusic.data.*
 import ru.rainedev.sirinmusic.ui.theme.SirinMusicTheme
 
-class ServerSettingsActivity : ComponentActivity() {
+class ServerSettingsActivity : ru.rainedev.sirinmusic.SirinActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -82,22 +84,22 @@ private fun ServerSettingsScreen(app: SirinApp, onBack: () -> Unit) {
             try { block() }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) { error = when ((e as? ApiException)?.code) {
-                403 -> "Нет доступа к настройкам сервера. Токены устройств в режиме аккаунтов не дают права администратора. Открой настройки в браузере с учётной записью владельца."
-                404 -> "Эта версия сервера не поддерживает настройки через API."
-                else -> e.message ?: "Не удалось связаться с сервером"
+                403 -> strings(R.string.server_settings_activity_1)
+                404 -> strings(R.string.server_settings_activity_2)
+                else -> e.message ?: strings(R.string.server_settings_activity_3)
             } }
             finally { busy = false }
         }
     }
     fun copy(text: String, secret: Boolean = false) {
-        val clip = ClipData.newPlainText(if (secret) "API-токен" else "Адрес", text)
+        val clip = ClipData.newPlainText(if (secret) strings(R.string.account_activity_33) else strings(R.string.server_settings_activity_4), text)
         if (secret) clip.description.extras = PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
         app.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
-        notice = "Скопировано"
+        notice = strings(R.string.account_activity_3)
     }
     LaunchedEffect(Unit) { action { install(app.api.serverSettings()) } }
-    Scaffold(topBar = { TopAppBar(title = { Text("Настройки сервера") }, navigationIcon = {
-        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Назад") }
+    Scaffold(topBar = { TopAppBar(title = { Text(strings(R.string.server_settings_activity_5)) }, navigationIcon = {
+        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, strings(R.string.about_activity_2)) }
     }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).imePadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -105,38 +107,38 @@ private fun ServerSettingsScreen(app: SirinApp, onBack: () -> Unit) {
             notice?.let { Text(it) }
             val data = reply
             if (data == null) {
-                Button(onClick = { action { install(app.api.serverSettings()) } }, enabled = !busy) { Text("Загрузить настройки") }
+                Button(onClick = { action { install(app.api.serverSettings()) } }, enabled = !busy) { Text(strings(R.string.server_settings_activity_6)) }
             } else {
-                if (data.restartPending) Text("Изменения сохранены и заработают после перезапуска сервера.")
-                Button(onClick = { restartDialog = true }, enabled = !busy && data.restartSupported) { Text("Перезапустить сервер") }
-                if (!data.restartSupported) Text("Эта установка не поддерживает перезапуск из приложения. После сохранения перезапусти сервер на компьютере; для Docker проверь также постоянную конфигурацию контейнера.")
-                Text("Адрес сервера", style = MaterialTheme.typography.titleLarge)
-                listOf("Вся домашняя сеть", "Интернет", "Только этот компьютер", "Только адрес").forEachIndexed { index, label ->
+                if (data.restartPending) Text(strings(R.string.server_settings_activity_7))
+                Button(onClick = { restartDialog = true }, enabled = !busy && data.restartSupported) { Text(strings(R.string.server_settings_activity_8)) }
+                if (!data.restartSupported) Text(strings(R.string.server_settings_activity_9))
+                Text(strings(R.string.server_settings_activity_10), style = MaterialTheme.typography.titleLarge)
+                listOf(strings(R.string.server_settings_activity_11), strings(R.string.server_settings_activity_12), strings(R.string.server_settings_activity_13), strings(R.string.server_settings_activity_14)).forEachIndexed { index, label ->
                     Row { RadioButton(selected = mode == index, enabled = !busy, onClick = { mode = index }); TextButton(onClick = { mode = index }, enabled = !busy) { Text(label) } }
                 }
-                if (mode == 3) OutlinedTextField(host, { host = it }, label = { Text("IP-адрес на сервере") }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(port, { port = it }, label = { Text("Порт") }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(publicUrl, { publicUrl = it }, label = { Text("Внешний адрес: https://домен или IP") }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth())
-                if (mode == 1) Text("Для доступа извне настрой Tailscale, Cloudflare Tunnel или проброс TCP-порта на роутере. Рекомендуются HTTPS и пароль. Для HTTPS на сервере установи MUSIK_SECURE_COOKIE=1. Выбор режима сам не открывает доступ из интернета.")
-                if (!data.phone.authEnabled) Text("Пароль выключен. Не открывай сервер в интернет без защиты.", color = MaterialTheme.colorScheme.error)
-                Text("Папка с музыкой", style = MaterialTheme.typography.titleLarge)
-                OutlinedTextField(library, { library = it }, label = { Text("Путь на сервере") }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedButton(onClick = { action { listing = app.api.serverDirs(library) } }, enabled = !busy) { Text("Выбрать папку…") }
-                Text("После смены папки требуется отдельное пересканирование. Треки из старой папки пропадут из библиотеки, история останется. Сохранение не запускает пересканирование.")
+                if (mode == 3) OutlinedTextField(host, { host = it }, label = { Text(strings(R.string.server_settings_activity_15)) }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(port, { port = it }, label = { Text(strings(R.string.server_settings_activity_16)) }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(publicUrl, { publicUrl = it }, label = { Text(strings(R.string.server_settings_activity_17)) }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (mode == 1) Text(strings(R.string.server_settings_activity_18))
+                if (!data.phone.authEnabled) Text(strings(R.string.server_settings_activity_19), color = MaterialTheme.colorScheme.error)
+                Text(strings(R.string.server_settings_activity_20), style = MaterialTheme.typography.titleLarge)
+                OutlinedTextField(library, { library = it }, label = { Text(strings(R.string.server_settings_activity_21)) }, enabled = !busy, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedButton(onClick = { action { listing = app.api.serverDirs(library) } }, enabled = !busy) { Text(strings(R.string.server_settings_activity_22)) }
+                Text(strings(R.string.server_settings_activity_23))
                 Button(onClick = { action {
-                    val number = port.toIntOrNull(); require(number != null && number in 1..65535) { "Порт должен быть от 1 до 65535" }
-                    val listenHost = when (mode) { 0, 1 -> ""; 2 -> "127.0.0.1"; else -> host.trim().also { require(it.isNotEmpty()) { "Введи IP-адрес" } } }
+                    val number = port.toIntOrNull(); require(number != null && number in 1..65535) { strings(R.string.server_settings_activity_24) }
+                    val listenHost = when (mode) { 0, 1 -> ""; 2 -> "127.0.0.1"; else -> host.trim().also { require(it.isNotEmpty()) { strings(R.string.server_settings_activity_25) } } }
                     val listen = if (listenHost.contains(':')) "[$listenHost]:$number" else "$listenHost:$number"
                     install(app.api.saveServerSettings(ServerValues(listen, publicUrl.trim(), library.trim())))
-                    notice = "Сохранено. Адрес подключения приложения остаётся прежним; при смене адреса измени его в разделе «Подключение»."
-                } }, enabled = !busy) { Text("Сохранить") }
+                    notice = strings(R.string.server_settings_activity_26)
+                } }, enabled = !busy) { Text(strings(R.string.account_activity_58)) }
                 Text(data.envPath, style = MaterialTheme.typography.bodySmall)
                 HorizontalDivider()
-                Text("Подключение телефона", style = MaterialTheme.typography.titleLarge)
+                Text(strings(R.string.server_settings_activity_27), style = MaterialTheme.typography.titleLarge)
                 data.phone.urls.forEach { url ->
                     Text(url)
                     Row {
-                        TextButton(onClick = { copy(url) }) { Text("Копировать") }
+                        TextButton(onClick = { copy(url) }) { Text(strings(R.string.account_activity_36)) }
                         TextButton(onClick = { action {
                             val payload = "musik://connect?url=${java.net.URLEncoder.encode(url, "UTF-8")}&token=${java.net.URLEncoder.encode(data.phone.token, "UTF-8")}"
                             qr = withContext(Dispatchers.Default) {
@@ -146,35 +148,35 @@ private fun ServerSettingsScreen(app: SirinApp, onBack: () -> Unit) {
                                     setPixels(pixels, 0, 768, 0, 0, 768, 768)
                                 }
                             }; qrUrl = url
-                        } }, enabled = !busy) { Text("Показать QR") }
+                        } }, enabled = !busy) { Text(strings(R.string.server_settings_activity_28)) }
                     }
                 }
-                if (data.phone.urls.isEmpty()) Text("Нет адресов для телефона. Проверь режим сети и внешний адрес.")
-                OutlinedTextField(data.phone.token, {}, readOnly = true, label = { Text("API-токен") }, visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-                Row { TextButton(onClick = { reveal = !reveal }) { Text(if (reveal) "Скрыть" else "Показать") }; TextButton(onClick = { copy(data.phone.token, true) }, enabled = data.phone.token.isNotEmpty()) { Text("Копировать") } }
-                Text("QR-код содержит адрес и API-токен. Передавай его только своим устройствам.")
-                Text("Внешний IP", style = MaterialTheme.typography.titleLarge)
-                if (ip.isNotEmpty()) { Text(ip); TextButton(onClick = { copy(ip) }) { Text("Копировать") } }
-                OutlinedButton(onClick = { action { ip = app.api.serverExternalIp().ip } }, enabled = !busy) { Text(if (ip.isEmpty()) "Узнать внешний IP" else "Обновить") }
-                Text("Это адрес роутера. При сером IP проброс порта не поможет: используй Tailscale или Cloudflare Tunnel.")
-                TextButton(onClick = { action { app.startActivity(Intent(Intent.ACTION_VIEW, app.api.url(data.phone.openapi).toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }, enabled = !busy) { Text("Описание API: openapi.json") }
+                if (data.phone.urls.isEmpty()) Text(strings(R.string.server_settings_activity_29))
+                OutlinedTextField(data.phone.token, {}, readOnly = true, label = { Text(strings(R.string.account_activity_33)) }, visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                Row { TextButton(onClick = { reveal = !reveal }) { Text(if (reveal) strings(R.string.account_activity_34) else strings(R.string.account_activity_35)) }; TextButton(onClick = { copy(data.phone.token, true) }, enabled = data.phone.token.isNotEmpty()) { Text(strings(R.string.account_activity_36)) } }
+                Text(strings(R.string.server_settings_activity_30))
+                Text(strings(R.string.server_settings_activity_31), style = MaterialTheme.typography.titleLarge)
+                if (ip.isNotEmpty()) { Text(ip); TextButton(onClick = { copy(ip) }) { Text(strings(R.string.account_activity_36)) } }
+                OutlinedButton(onClick = { action { ip = app.api.serverExternalIp().ip } }, enabled = !busy) { Text(if (ip.isEmpty()) strings(R.string.server_settings_activity_32) else strings(R.string.account_activity_67)) }
+                Text(strings(R.string.server_settings_activity_33))
+                TextButton(onClick = { action { app.startActivity(Intent(Intent.ACTION_VIEW, app.api.url(data.phone.openapi).toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }, enabled = !busy) { Text(strings(R.string.server_settings_activity_34)) }
             }
         }
     }
     listing?.let { dirs ->
-        AlertDialog(onDismissRequest = { listing = null }, title = { Text("Папка на сервере") }, text = {
+        AlertDialog(onDismissRequest = { listing = null }, title = { Text(strings(R.string.server_settings_activity_35)) }, text = {
             Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
-                Text(dirs.path.ifEmpty { "Корневые папки" })
+                Text(dirs.path.ifEmpty { strings(R.string.server_settings_activity_36) })
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                if (dirs.parent.isNotEmpty()) TextButton(onClick = { action { listing = app.api.serverDirs(dirs.parent) } }, enabled = !busy) { Text("На уровень выше") }
+                if (dirs.parent.isNotEmpty()) TextButton(onClick = { action { listing = app.api.serverDirs(dirs.parent) } }, enabled = !busy) { Text(strings(R.string.server_settings_activity_37)) }
                 (dirs.dirs ?: emptyList()).forEach { dir -> TextButton(onClick = { action { listing = app.api.serverDirs(dir.path) } }, enabled = !busy) { Text(dir.name) } }
             }
-        }, confirmButton = { TextButton(onClick = { library = dirs.path; listing = null }, enabled = !busy && dirs.path.isNotEmpty()) { Text("Выбрать эту папку") } }, dismissButton = { TextButton(onClick = { listing = null }) { Text("Отмена") } })
+        }, confirmButton = { TextButton(onClick = { library = dirs.path; listing = null }, enabled = !busy && dirs.path.isNotEmpty()) { Text(strings(R.string.server_settings_activity_38)) } }, dismissButton = { TextButton(onClick = { listing = null }) { Text(strings(R.string.account_activity_71)) } })
     }
-    if (restartDialog) AlertDialog(onDismissRequest = { restartDialog = false }, title = { Text("Перезапустить сервер?") }, text = { Text("Подключения временно прервутся. Сохранённые настройки применятся после запуска.") }, confirmButton = {
-        TextButton(onClick = { restartDialog = false; action { app.api.restartServer(); notice = "Команда перезапуска отправлена. Подключение временно прервётся." } }) { Text("Перезапустить") }
-    }, dismissButton = { TextButton(onClick = { restartDialog = false }) { Text("Отмена") } })
-    qr?.let { bitmap -> AlertDialog(onDismissRequest = { qr = null }, title = { Text("Подключить приложение") }, text = {
-        Column { Text(qrUrl); Image(bitmap.asImageBitmap(), "QR-код подключения", Modifier.fillMaxWidth().aspectRatio(1f)) }
-    }, confirmButton = { TextButton(onClick = { qr = null }) { Text("Закрыть") } }) }
+    if (restartDialog) AlertDialog(onDismissRequest = { restartDialog = false }, title = { Text(strings(R.string.server_settings_activity_39)) }, text = { Text(strings(R.string.server_settings_activity_40)) }, confirmButton = {
+        TextButton(onClick = { restartDialog = false; action { app.api.restartServer(); notice = strings(R.string.server_settings_activity_41) } }) { Text(strings(R.string.server_settings_activity_42)) }
+    }, dismissButton = { TextButton(onClick = { restartDialog = false }) { Text(strings(R.string.account_activity_71)) } })
+    qr?.let { bitmap -> AlertDialog(onDismissRequest = { qr = null }, title = { Text(strings(R.string.server_settings_activity_43)) }, text = {
+        Column { Text(qrUrl); Image(bitmap.asImageBitmap(), strings(R.string.server_settings_activity_44), Modifier.fillMaxWidth().aspectRatio(1f)) }
+    }, confirmButton = { TextButton(onClick = { qr = null }) { Text(strings(R.string.account_activity_75)) } }) }
 }

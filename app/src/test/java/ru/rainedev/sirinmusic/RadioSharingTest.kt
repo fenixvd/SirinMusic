@@ -3,7 +3,7 @@ package ru.rainedev.sirinmusic
 import org.junit.Assert.*
 import org.junit.Test
 
-class RadioSharingTest {
+class RadioSharingTest : ru.rainedev.sirinmusic.LocalizedTest() {
     @Test fun publicListenLinkCanUseConfiguredPublicHost() {
         assertEquals("https://radio.example/listen/public.mp3", publicRadioLink("https://radio.example/listen/public.mp3"))
     }

@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic.ui
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -10,10 +12,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 
-enum class SettingsPage(val title: String, val summary: String, val icon: ImageVector) {
-    APPEARANCE("Оформление", "Тема, палитры и свой цвет", Icons.Rounded.Palette),
-    STORAGE("Хранилище", "Обложки и очистка кеша", Icons.Rounded.Storage),
-    CONNECTION("Подключение", "Адрес сервера и учётные данные", Icons.Rounded.Dns),
+enum class SettingsPage(private val titleRes: Int, private val summaryRes: Int, val icon: ImageVector) {
+    APPEARANCE(R.string.settings_navigation_1, R.string.settings_navigation_2, Icons.Rounded.Palette),
+    STORAGE(R.string.settings_activity_10, R.string.settings_navigation_3, Icons.Rounded.Storage),
+    CONNECTION(R.string.settings_activity_17, R.string.settings_navigation_4, Icons.Rounded.Dns);
+    val title: String get() = strings(titleRes)
+    val summary: String get() = strings(summaryRes)
 }
 
 @Composable
@@ -25,10 +29,10 @@ fun SettingsMenu(
         SettingsPage.entries.forEach { page ->
             SettingsMenuItem(page.title, page.summary, page.icon, selected == page) { onSelect(page) }
         }
-        SettingsMenuItem("Аккаунт и профили", "Пароль, профили, устройства и пользователи", Icons.Rounded.ManageAccounts) { onAccount() }
-        SettingsMenuItem("Настройки сервера", "Сеть, музыка и подключение телефона", Icons.Rounded.Dns) { onServer() }
-        SettingsMenuItem("Обновления", "Версия приложения и проверки обновлений", Icons.Rounded.SystemUpdate) { onUpdates() }
-        SettingsMenuItem("О приложении", "Sirin Music и разработчик", Icons.Rounded.Info) { onAbout() }
+        SettingsMenuItem(strings(R.string.account_activity_4), strings(R.string.settings_navigation_5), Icons.Rounded.ManageAccounts) { onAccount() }
+        SettingsMenuItem(strings(R.string.server_settings_activity_5), strings(R.string.settings_navigation_6), Icons.Rounded.Dns) { onServer() }
+        SettingsMenuItem(strings(R.string.updates_activity_1), strings(R.string.settings_navigation_7), Icons.Rounded.SystemUpdate) { onUpdates() }
+        SettingsMenuItem(strings(R.string.about_activity_1), strings(R.string.settings_navigation_8), Icons.Rounded.Info) { onAbout() }
     }
 }
 

@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic.data
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -57,11 +59,11 @@ class MusikApi(private val settings: ConnectionSettings) {
         .build()
 
     fun url(path: String): String {
-        val base = settings.baseUrl.toHttpUrlOrNull() ?: throw IllegalArgumentException("Некорректный адрес сервера")
+        val base = settings.baseUrl.toHttpUrlOrNull() ?: throw IllegalArgumentException(strings(R.string.musik_api_1))
         val target = if (path.startsWith("/")) (settings.baseUrl + path).toHttpUrlOrNull()
             else path.toHttpUrlOrNull()
         require(target != null && target.scheme == base.scheme && target.host == base.host && target.port == base.port) {
-            "Ссылка ведёт на другой сервер"
+            strings(R.string.musik_api_2)
         }
         return target.toString()
     }
@@ -92,10 +94,10 @@ class MusikApi(private val settings: ConnectionSettings) {
     }
 
     private fun shortError(code: Int, text: String): String = when (code) {
-        401 -> "Неверный токен (401)"
-        404 -> "Маршрут не найден (404)"
-        429 -> "Слишком часто — подожди минуту (429)"
-        else -> "Сервер ответил $code: ${text.take(120)}"
+        401 -> strings(R.string.musik_api_3)
+        404 -> strings(R.string.musik_api_4)
+        429 -> strings(R.string.musik_api_5)
+        else -> strings(R.string.musik_api_6, code, text.take(120))
     }
 
     private suspend inline fun <reified T> get(path: String): T =
@@ -114,7 +116,7 @@ class MusikApi(private val settings: ConnectionSettings) {
     suspend fun authStatus(): AuthStatus = get("/api/auth/me")
 
     suspend fun passwordToken(username: String, password: String, profileId: String? = null): TokenReply {
-        require(password.isNotEmpty()) { "Введи пароль" }
+        require(password.isNotEmpty()) { strings(R.string.app_view_model_3) }
         val body = buildString {
             append("{\"password\":${quote(password)},\"device_name\":\"Sirin Music Android\"")
             if (username.isNotBlank()) append(",\"username\":${quote(username.trim())}")
@@ -127,16 +129,16 @@ class MusikApi(private val settings: ConnectionSettings) {
     /** Health is public; only auth/me can validate the supplied credential. */
     suspend fun validateConnection(): Health {
         val status = authStatus()
-        check(status.ok) { "Сервер отклонил токен. Войди снова." }
-        return health().also { check(it.ok) { "Сервер ответил, но не готов" } }
+        check(status.ok) { strings(R.string.app_view_model_1) }
+        return health().also { check(it.ok) { strings(R.string.musik_api_7) } }
     }
 
     suspend fun validateAnonymousConnection(): Health {
         val status = authStatus()
         check(status.ok && !status.authEnabled && !status.multiUser) {
-            "Сервер требует авторизацию. Войди по паролю, QR или токену."
+            strings(R.string.musik_api_8)
         }
-        return health().also { check(it.ok) { "Сервер ответил, но не готов" } }
+        return health().also { check(it.ok) { strings(R.string.musik_api_7) } }
     }
 
     suspend fun playbackState(): PlaybackStateReply = get("/api/playback/state")
@@ -147,6 +149,8 @@ class MusikApi(private val settings: ConnectionSettings) {
     suspend fun now(sessionId: String): RadioStart = get("/api/now?session_id=${segment(sessionId)}")
     suspend fun artistPhotos(): ArtistPhotosReply = get("/api/artist-photos")
 
+    suspend fun trackDetails(id: Long): Track = get("/api/tracks/$id")
+
     suspend fun health(): Health = get("/api/health")
 
     suspend fun startRadio(seedTrackId: Long? = null): RadioStart =
@@ -154,15 +158,20 @@ class MusikApi(private val settings: ConnectionSettings) {
 
     suspend fun mixes(): MixesReply = get("/api/mixes")
 
+    suspend fun favoriteRecommendations(): FavoriteRecommendations = get("/api/recommend/favorites")
+
+    fun compatibleStreamUrl(track: Track): String = url(track.streamPath).toHttpUrlOrNull()!!
+        .newBuilder().setQueryParameter("q", "mp3").build().toString()
+
     suspend fun playMix(kind: String): RadioStart = post("/api/mixes/$kind/play")
 
     suspend fun playTrack(trackId: Long): RadioStart = post("/api/play", """{"track_id":$trackId}""")
 
     /** Keep the server's favorites queue, starting at the tapped track. */
     suspend fun playFavorite(trackId: Long): RadioStart {
-        require(trackId > 0) { "Некорректный идентификатор трека" }
+        require(trackId > 0) { strings(R.string.musik_api_9) }
         val reply: RadioStart = post("/api/mixes/favorites/play", """{"start_track_id":$trackId}""")
-        check(reply.current?.key == trackId) { "Сервер не запустил выбранный трек из избранного" }
+        check(reply.current?.key == trackId) { strings(R.string.musik_api_10) }
         return reply
     }
 
@@ -226,7 +235,7 @@ class MusikApi(private val settings: ConnectionSettings) {
     suspend fun weeklyMetrics(): WeeklyMetrics = get("/api/metrics/weekly")
     suspend fun recommendations(): Recommendations = get("/api/metrics/recommendations")
     suspend fun saveExplore(lo: Double, hi: Double) {
-        require(lo.isFinite() && hi.isFinite() && lo in 0.0..1.0 && hi in lo..1.0) { "Некорректные границы новизны" }
+        require(lo.isFinite() && hi.isFinite() && lo in 0.0..1.0 && hi in lo..1.0) { strings(R.string.musik_api_11) }
         raw("/api/profile/explore", """{"explore_lo":$lo,"explore_hi":$hi}""", "PUT")
     }
     suspend fun contexts(): ContextsReply = get("/api/contexts")
@@ -269,14 +278,17 @@ class MusikApi(private val settings: ConnectionSettings) {
         positionSec: Double,
         durationSec: Double,
         listenedSec: Double,
+        eventId: String = randomId(),
+        reason: String? = null,
     ): EventReply {
         val body = buildString {
             append("{")
             append(""""type":${quote(type)},""")
-            append(""""event_id":${quote(randomId())},""")
+            append(""""event_id":${quote(eventId)},""")
             append(""""track_id":$trackId,""")
             if (sessionId != null) append(""""session_id":${quote(sessionId)},""")
             if (impressionId != null) append(""""impression_id":${quote(impressionId)},""")
+            if (reason != null) append(""""reason":${quote(reason)},""")
             append(""""client_id":${quote(settings.clientId)},""")
             append(""""device_id":"android",""")
             append(""""position_sec":${fmt(positionSec)},""")
@@ -301,8 +313,8 @@ class MusikApi(private val settings: ConnectionSettings) {
 
 
 fun validateServerUrl(value: String): String? {
-    val parsed = value.trim().toHttpUrlOrNull() ?: return "Укажи полный адрес: https://сервер или http://адрес:порт"
+    val parsed = value.trim().toHttpUrlOrNull() ?: return strings(R.string.musik_api_12)
     if (parsed.username.isNotEmpty() || parsed.password.isNotEmpty() || parsed.query != null || parsed.fragment != null)
-        return "Адрес не должен содержать логин, пароль, параметры или фрагмент"
+        return strings(R.string.musik_api_13)
     return null
 }

@@ -10,7 +10,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.*
 import org.junit.Test
 
-class GitHubUpdatesTest {
+class GitHubUpdatesTest : ru.rainedev.sirinmusic.LocalizedTest() {
     private fun client(bytes: ByteArray, code: Int = 200) = OkHttpClient.Builder().addInterceptor { chain ->
         assertNull(chain.request().header("Authorization"))
         Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(code).message("fixture")

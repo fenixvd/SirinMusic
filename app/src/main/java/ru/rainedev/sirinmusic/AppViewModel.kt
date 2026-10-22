@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -33,6 +35,9 @@ data class AppState(
     val favoriteAlbums: Set<Pair<String, String>> = emptySet(),
     val favoriteArtistRows: List<ArtistRow> = emptyList(),
     val favoriteAlbumRows: List<AlbumRow> = emptyList(),
+    val favoriteRecommendations: FavoriteRecommendations? = null,
+    val favoriteRecommendationsLoading: Boolean = false,
+    val favoriteRecommendationsError: String? = null,
     val profile: Profile? = null,
     val weekly: WeeklyMetrics? = null,
     val recommendations: Recommendations? = null,
@@ -62,6 +67,7 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
     private val jobs = TaskJobs(viewModelScope)
     private var connection = settings.baseUrl to settings.token
     private var selectedPlaylistId: Long? = null
+    private var favoriteRecommendationsRequest = 0
     // Credentials exist only while choosing a profile, never in settings or saved state.
     private class PendingAccount(val url: String, val username: String, val password: String, val reply: TokenReply)
     private var pendingAccount: PendingAccount? = null
@@ -73,7 +79,7 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
             api.unauthorized.collect {
                 // Keep the saved URL for re-authentication, but never keep a rejected token active.
                 logout(forgetUrl = false)
-                _state.update { it.copy(loginError = "Сервер отклонил токен. Войди снова.") }
+                _state.update { it.copy(loginError = strings(R.string.app_view_model_1)) }
             }
         }
         if (settings.isConfigured) refreshAll()
@@ -83,7 +89,7 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
         jobs.launch(key) {
             try { block() }
             catch (e: CancellationException) { throw e }
-            catch (e: Exception) { _state.update { it.copy(message = e.message ?: "Не удалось выполнить запрос") } }
+            catch (e: Exception) { _state.update { it.copy(message = e.message ?: strings(R.string.account_activity_2)) } }
         }
     }
 
@@ -107,7 +113,7 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
 
     private fun loginWithToken(url: String, token: String, anonymous: Boolean) {
         cancelAccountLogin()
-        val error = validateServerUrl(url) ?: if (!anonymous && token.isBlank()) "Введи токен" else null
+        val error = validateServerUrl(url) ?: if (!anonymous && token.isBlank()) strings(R.string.app_view_model_2) else null
         if (error != null) { _state.update { it.copy(loginError = error) }; return }
         task("login") {
             _state.update { it.copy(checking = true, loginError = null) }
@@ -131,7 +137,7 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
 
     fun loginPassword(url: String, username: String, password: String) {
         cancelAccountLogin()
-        val error = validateServerUrl(url) ?: if (password.isEmpty()) "Введи пароль" else null
+        val error = validateServerUrl(url) ?: if (password.isEmpty()) strings(R.string.app_view_model_3) else null
         if (error != null) { _state.update { it.copy(loginError = error) }; return }
         task("login") {
             _state.update { it.copy(checking = true, loginError = null) }
@@ -139,9 +145,9 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
                 val base = url.trim().trimEnd('/')
                 val anonymous = MusikApi(ServerConnection(base, "", settings.clientId))
                 val status = anonymous.authStatus()
-                check(!status.multiUser || username.isNotBlank()) { "Введи имя пользователя" }
+                check(!status.multiUser || username.isNotBlank()) { strings(R.string.app_view_model_4) }
                 val reply = anonymous.passwordToken(username, password)
-                check(reply.token.isNotBlank()) { "Сервер не выдал токен" }
+                check(reply.token.isNotBlank()) { strings(R.string.app_view_model_5) }
                 if (reply.profiles.size > 1) {
                     pendingAccount = PendingAccount(base, username, password, reply)
                     _state.update { it.copy(loginProfiles = reply.profiles) }
@@ -149,9 +155,9 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
             } catch (e: CancellationException) { pendingAccount = null; throw e }
             catch (e: ApiException) {
                 _state.update { it.copy(loginError = when (e.code) {
-                    404 -> "Сервер пока не поддерживает вход по паролю. Используй QR или токен."
-                    401 -> "Неверное имя пользователя или пароль"
-                    409 -> "На сервере не настроен токен для мобильного входа"
+                    404 -> strings(R.string.app_view_model_6)
+                    401 -> strings(R.string.app_view_model_7)
+                    409 -> strings(R.string.app_view_model_8)
                     else -> e.message
                 }) }
             } catch (e: Exception) { _state.update { it.copy(loginError = e.message) } }
@@ -168,7 +174,7 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
                 val reply = if (pending.reply.device?.profileId == id) pending.reply else
                     MusikApi(ServerConnection(pending.url, "", settings.clientId))
                         .passwordToken(pending.username, pending.password, id)
-                check(reply.device?.profileId == id) { "Сервер выдал токен другого профиля" }
+                check(reply.device?.profileId == id) { strings(R.string.app_view_model_9) }
                 completeAccountLogin(pending.url, reply)
             } catch (e: CancellationException) { pendingAccount = null; throw e }
             catch (e: Exception) { _state.update { it.copy(loginError = e.message) } }
@@ -206,7 +212,7 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
         } catch (e: CancellationException) { throw e }
         catch (e: ApiException) {
             if (e.code == 404) _state.update { it.copy(artistPhotos = emptyMap()) }
-            else _state.update { it.copy(message = "Не удалось загрузить фото артистов") }
+            else _state.update { it.copy(message = strings(R.string.app_view_model_10)) }
         } catch (_: Exception) { /* Covers remain available when photos cannot be loaded. */ }
     }
     fun loadMixes() = task("mixes") { val r = api.mixes(); _state.update { it.copy(mixes = r.mixes, hint = r.hint) } }
@@ -228,7 +234,7 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
             _state.update { apply(it, value).copy(profileErrors = it.profileErrors - key) }
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) {
-            _state.update { it.copy(profileErrors = it.profileErrors + (key to (e.message ?: "Не удалось загрузить"))) }
+            _state.update { it.copy(profileErrors = it.profileErrors + (key to (e.message ?: strings(R.string.app_view_model_11)))) }
         }
     }
     private suspend fun refreshProfileDetails() {
@@ -244,14 +250,14 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
     }
     fun saveExplore(lo: Double, hi: Double) = mutation("explore") {
         api.saveExplore(lo, hi)
-        val p = api.profile(); _state.update { it.copy(profile = p, message = "Границы новизны сохранены") }
+        val p = api.profile(); _state.update { it.copy(profile = p, message = strings(R.string.app_view_model_12)) }
     }
     fun createContext(name: String, kind: String) = mutation("contexts") {
         api.createContext(name, kind)
-        val r = api.contexts(); _state.update { it.copy(contexts = r.contexts, message = "Настроение добавлено") }
+        val r = api.contexts(); _state.update { it.copy(contexts = r.contexts, message = strings(R.string.app_view_model_13)) }
     }
     fun toggleContext(id: String, active: Boolean) = mutation("contexts") {
-        val session = playback.ui.value.sessionId ?: error("Сначала запусти радио")
+        val session = playback.ui.value.sessionId ?: error(strings(R.string.app_view_model_14))
         val r = api.activateContext(id, session, active)
         playback.setContexts(session, r.contextIds)
     }
@@ -286,21 +292,21 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
     }
     fun refreshServerMixes() = mutation("mix-refresh") {
         val job = api.refreshMixes()
-        require(job.id > 0) { "Сервер не вернул номер задания" }
-        _state.update { it.copy(message = "Подборки обновляются на сервере") }
+        require(job.id > 0) { strings(R.string.app_view_model_15) }
+        _state.update { it.copy(message = strings(R.string.app_view_model_16)) }
         repeat(90) {
             delay(2000)
             val current = api.mixJob(job.id)
             when (current.status) {
                 "done" -> {
                     val mixes = api.mixes()
-                    _state.update { it.copy(mixes = mixes.mixes, hint = mixes.hint, message = "Подборки обновлены") }
+                    _state.update { it.copy(mixes = mixes.mixes, hint = mixes.hint, message = strings(R.string.app_view_model_17)) }
                     return@mutation
                 }
-                "failed", "error" -> error("Не удалось обновить подборки")
+                "failed", "error" -> error(strings(R.string.app_view_model_18))
             }
         }
-        _state.update { it.copy(message = "Задание ещё выполняется на сервере. Обнови данные позже.") }
+        _state.update { it.copy(message = strings(R.string.app_view_model_19)) }
     }
 
     private suspend fun refreshFavorites() {
@@ -308,8 +314,30 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
         playback.setFavorites(tracks.map { it.key }.toSet())
         _state.update { it.copy(favorites = tracks, favoriteArtists = r.artists.map { a -> a.artist }.toSet(),
             favoriteAlbums = r.albums.map { a -> a.artist to a.album }.toSet(), favoriteArtistRows = r.artists, favoriteAlbumRows = r.albums) }
+        loadFavoriteRecommendations()
     }
     fun loadFavorites() = task("favorites") { favoritesMutex.withLock { refreshFavorites() } }
+
+    fun loadFavoriteRecommendations() {
+        val request = ++favoriteRecommendationsRequest
+        task("favorite-recommendations") {
+            _state.update { it.copy(favoriteRecommendationsLoading = true, favoriteRecommendationsError = null) }
+            try {
+                val result = api.favoriteRecommendations()
+                if (request == favoriteRecommendationsRequest) _state.update { it.copy(favoriteRecommendations = result) }
+            } catch (e: CancellationException) { throw e }
+            catch (e: ApiException) {
+                if (request == favoriteRecommendationsRequest) _state.update {
+                    if (e.code == 404) it.copy(favoriteRecommendations = null, favoriteRecommendationsError = null)
+                    else it.copy(favoriteRecommendationsError = strings(R.string.app_view_model_20))
+                }
+            } catch (_: Exception) {
+                if (request == favoriteRecommendationsRequest) _state.update { it.copy(favoriteRecommendationsError = strings(R.string.app_view_model_21)) }
+            } finally {
+                if (request == favoriteRecommendationsRequest) _state.update { it.copy(favoriteRecommendationsLoading = false) }
+            }
+        }
+    }
 
     private fun mutation(key: String, block: suspend () -> Unit) {
         if (key in _state.value.busy) return
@@ -340,10 +368,10 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
     }
     fun closePlaylist() { selectedPlaylistId = null; jobs.cancel("playlist"); _state.update { it.copy(playlist = null, playlistLoading = false) } }
     fun createPlaylist(name: String, description: String) = mutation("playlist-mutation") {
-        require(name.isNotBlank()) { "Введи название" }; api.createPlaylist(name.trim(), description.trim()); refreshPlaylists()
+        require(name.isNotBlank()) { strings(R.string.app_view_model_22) }; api.createPlaylist(name.trim(), description.trim()); refreshPlaylists()
     }
     fun editPlaylist(p: Playlist, name: String, description: String) = mutation("playlist-mutation") {
-        require(name.isNotBlank()) { "Введи название" }
+        require(name.isNotBlank()) { strings(R.string.app_view_model_22) }
         val updated = api.editPlaylist(p, name.trim(), description.trim())
         if (selectedPlaylistId == p.id) _state.update { it.copy(playlist = updated) }
         refreshPlaylists()
@@ -356,7 +384,7 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
     fun addToPlaylist(id: Long, trackId: Long) = mutation("playlist-mutation") {
         api.addPlaylistTrack(id, trackId); refreshPlaylists()
         if (selectedPlaylistId == id) { val p = api.playlist(id); _state.update { it.copy(playlist = p) } }
-        _state.update { it.copy(message = "Трек добавлен в плейлист") }
+        _state.update { it.copy(message = strings(R.string.app_view_model_23)) }
     }
     fun removeFromPlaylist(id: Long, itemId: String) = mutation("playlist-mutation") {
         api.removePlaylistTrack(id, itemId); val p = api.playlist(id)

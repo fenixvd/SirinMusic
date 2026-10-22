@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,7 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ru.rainedev.sirinmusic.ui.theme.SirinMusicTheme
 
-class AboutActivity : ComponentActivity() {
+class AboutActivity : ru.rainedev.sirinmusic.SirinActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); enableEdgeToEdge()
@@ -31,8 +33,8 @@ class AboutActivity : ComponentActivity() {
         setContent {
             val appearance by app.settings.appearance.collectAsStateWithLifecycle()
             SirinMusicTheme(appearance) {
-                Scaffold(topBar = { TopAppBar(title = { Text("О приложении") }, navigationIcon = {
-                    IconButton(onClick = ::finish) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Назад") }
+                Scaffold(topBar = { TopAppBar(title = { Text(strings(R.string.about_activity_1)) }, navigationIcon = {
+                    IconButton(onClick = ::finish) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, strings(R.string.about_activity_2)) }
                 }) }) { padding ->
                     Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
                     Column(Modifier.widthIn(max = 760.dp).fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -41,12 +43,12 @@ class AboutActivity : ComponentActivity() {
                             Image(painterResource(R.drawable.ic_launcher_foreground), "Sirin Music", Modifier.size(108.dp))
                         }
                         Text("Sirin Music", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 16.dp))
-                        Text("Версия ${info.versionName}", style = MaterialTheme.typography.bodyMedium)
+                        Text(strings(R.string.about_activity_3, info.versionName), style = MaterialTheme.typography.bodyMedium)
                         HorizontalDivider(Modifier.padding(vertical = 24.dp))
                         Text("RaineDev", style = MaterialTheme.typography.titleLarge)
-                        Text("Нативный Android-клиент для musik. Музыка с твоего сервера, подборки и радио, которое учится твоему вкусу.",
+                        Text(strings(R.string.about_activity_4),
                             modifier = Modifier.padding(top = 12.dp))
-                        Text("Сделано на Kotlin и Jetpack Compose. Воспроизведение — AndroidX Media3; изображения — Coil; сеть — OkHttp.",
+                        Text(strings(R.string.about_activity_5),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 24.dp))
                     }
                     }

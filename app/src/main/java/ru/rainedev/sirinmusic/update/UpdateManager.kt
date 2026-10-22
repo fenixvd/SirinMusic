@@ -1,5 +1,6 @@
 package ru.rainedev.sirinmusic.update
 
+import ru.rainedev.sirinmusic.strings
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -86,7 +87,7 @@ internal class UpdateManager(private val context: Context) {
             if (notify) notifyAvailable()
             true
         } catch (e: CancellationException) { throw e }
-        catch (e: Exception) { _state.update { it.copy(error = e.message ?: "Не удалось проверить обновления") }; false }
+        catch (e: Exception) { _state.update { it.copy(error = e.message ?: strings(R.string.update_manager_1)) }; false }
         finally { _state.update { it.copy(checking = false) } }
     }
 
@@ -96,12 +97,12 @@ internal class UpdateManager(private val context: Context) {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val manager = context.getSystemService(NotificationManager::class.java)
         if (!manager.areNotificationsEnabled()) return
-        manager.createNotificationChannel(NotificationChannel("app_updates", "Обновления приложения", NotificationManager.IMPORTANCE_DEFAULT))
+        manager.createNotificationChannel(NotificationChannel("app_updates", strings(R.string.update_manager_2), NotificationManager.IMPORTANCE_DEFAULT))
         val intent = PendingIntent.getActivity(context, 152, Intent(context, UpdatesActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = NotificationCompat.Builder(context, "app_updates")
-            .setSmallIcon(R.drawable.ic_notification).setContentTitle("Доступна Sirin Music ${update.version}")
-            .setContentText("Нажми, чтобы скачать и установить обновление")
+            .setSmallIcon(R.drawable.ic_notification).setContentTitle(strings(R.string.update_manager_3, update.version))
+            .setContentText(strings(R.string.update_manager_4))
             .setContentIntent(intent).setAutoCancel(true).build()
         manager.notify(152, notification)
         prefs.edit().putString("notified", update.version).apply()
@@ -122,7 +123,7 @@ internal class UpdateManager(private val context: Context) {
             _state.update { it.copy(ready = target) }
             target
         } catch (e: CancellationException) { throw e }
-        catch (e: Exception) { _state.update { it.copy(error = e.message ?: "Не удалось скачать обновление") }; null }
+        catch (e: Exception) { _state.update { it.copy(error = e.message ?: strings(R.string.update_manager_5)) }; null }
         finally {
             withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { partial.delete() }
             _state.update { it.copy(downloading = false) }
@@ -133,21 +134,21 @@ internal class UpdateManager(private val context: Context) {
     private fun validateApk(file: File, update: AvailableUpdate) {
         val pm = context.packageManager
         val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
-        val archive = pm.getPackageArchiveInfo(file.absolutePath, flags) ?: error("Некорректный APK")
+        val archive = pm.getPackageArchiveInfo(file.absolutePath, flags) ?: error(strings(R.string.update_manager_6))
         val installed = pm.getPackageInfo(context.packageName, flags)
-        require(archive.packageName == context.packageName) { "APK принадлежит другому приложению" }
-        require(archive.versionName == update.version) { "Версия APK не соответствует релизу" }
+        require(archive.packageName == context.packageName) { strings(R.string.update_manager_7) }
+        require(archive.versionName == update.version) { strings(R.string.update_manager_8) }
         val remoteCode = if (Build.VERSION.SDK_INT >= 28) archive.longVersionCode else archive.versionCode.toLong()
         val currentCode = if (Build.VERSION.SDK_INT >= 28) installed.longVersionCode else installed.versionCode.toLong()
-        require(remoteCode >= currentCode) { "APK имеет более старый код версии" }
-        require(archive.applicationInfo?.minSdkVersion?.let { it <= Build.VERSION.SDK_INT } == true) { "Версия Android не поддерживается обновлением" }
+        require(remoteCode >= currentCode) { strings(R.string.update_manager_9) }
+        require(archive.applicationInfo?.minSdkVersion?.let { it <= Build.VERSION.SDK_INT } == true) { strings(R.string.update_manager_10) }
         fun certificates(info: android.content.pm.PackageInfo): Set<String> {
             val signatures = if (Build.VERSION.SDK_INT >= 28) info.signingInfo?.apkContentsSigners else info.signatures
             return signatures.orEmpty().map { signature -> MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
                 .joinToString("") { "%02x".format(it) } }.toSet()
         }
         val expected = certificates(installed)
-        require(expected.isNotEmpty() && certificates(archive) == expected) { "Подпись обновления отличается от установленного приложения" }
+        require(expected.isNotEmpty() && certificates(archive) == expected) { strings(R.string.update_manager_11) }
     }
 
     suspend fun cleanOldDownloads() = mutex.withLock { withContext(Dispatchers.IO) {

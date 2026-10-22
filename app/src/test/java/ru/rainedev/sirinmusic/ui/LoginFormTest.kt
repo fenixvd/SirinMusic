@@ -4,7 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import ru.rainedev.sirinmusic.data.ConnectLink
 
-class LoginFormTest {
+class LoginFormTest : ru.rainedev.sirinmusic.LocalizedTest() {
     private val typed = LoginForm("http://a.local:8787", "token-for-server-a")
 
     @Test fun addressOnlyQrClearsTheTokenAndDoesNotSignIn() {

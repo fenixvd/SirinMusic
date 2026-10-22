@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic.data
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import android.content.Context
 import android.content.SharedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,13 +75,14 @@ class Settings(context: Context) : ConnectionSettings {
 
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
-enum class Palette(val label: String, val seed: Int) {
-    SIRIN("Сирин", 0xFF9B4220.toInt()), FOREST("Лес", 0xFF386A20.toInt()),
-    OCEAN("Океан", 0xFF00658E.toInt()), SUNSET("Закат", 0xFF904B40.toInt()),
-    LAVENDER("Лаванда", 0xFF6750A4.toInt()), ROSE("Роза", 0xFFAD1457.toInt()),
-    TEAL("Бирюза", 0xFF006A60.toInt()), AMBER("Янтарь", 0xFF8A5800.toInt()),
-    INDIGO("Индиго", 0xFF3949AB.toInt()), GRAPHITE("Графит", 0xFF52616B.toInt()),
-    CUSTOM("Свой цвет", 0xFF6750A4.toInt())
+enum class Palette(private val labelRes: Int, val seed: Int) {
+    SIRIN(R.string.settings_1, 0xFF9B4220.toInt()), FOREST(R.string.settings_2, 0xFF386A20.toInt()),
+    OCEAN(R.string.settings_3, 0xFF00658E.toInt()), SUNSET(R.string.settings_4, 0xFF904B40.toInt()),
+    LAVENDER(R.string.settings_5, 0xFF6750A4.toInt()), ROSE(R.string.settings_6, 0xFFAD1457.toInt()),
+    TEAL(R.string.settings_7, 0xFF006A60.toInt()), AMBER(R.string.settings_8, 0xFF8A5800.toInt()),
+    INDIGO(R.string.settings_9, 0xFF3949AB.toInt()), GRAPHITE(R.string.settings_10, 0xFF52616B.toInt()),
+    CUSTOM(R.string.settings_11, 0xFF6750A4.toInt());
+    val label: String get() = strings(labelRes)
 }
 data class Appearance(val theme: ThemeMode = ThemeMode.SYSTEM, val dynamicColor: Boolean = true,
     val palette: Palette = Palette.SIRIN, val customColor: Int = 0xFF6750A4.toInt())

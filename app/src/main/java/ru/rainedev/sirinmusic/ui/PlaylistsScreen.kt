@@ -1,5 +1,8 @@
 package ru.rainedev.sirinmusic.ui
 
+import ru.rainedev.sirinmusic.trackCount
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -27,16 +30,16 @@ fun PlaylistsScreen(state: AppState, artworkUrl: (String?, Int) -> String?, onOp
         item(span = { GridItemSpan(maxLineSpan) }) {
             Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                 Button(onClick = { creating = true }, enabled = "playlist-mutation" !in state.busy) {
-                    Icon(Icons.Rounded.Add, null); Text("Создать", Modifier.padding(start = 8.dp))
+                    Icon(Icons.Rounded.Add, null); Text(strings(R.string.playlists_screen_1), Modifier.padding(start = 8.dp))
                 }
-                IconButton(onClick = onRefresh, enabled = !state.playlistsLoading) { Icon(Icons.Rounded.Refresh, "Обновить плейлисты") }
+                IconButton(onClick = onRefresh, enabled = !state.playlistsLoading) { Icon(Icons.Rounded.Refresh, strings(R.string.playlists_screen_2)) }
             }
         }
         if (state.playlistsLoading) item(span = { GridItemSpan(maxLineSpan) }) { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-        if (state.playlists.isEmpty() && !state.playlistsLoading) item(span = { GridItemSpan(maxLineSpan) }) { EmptyState("Плейлистов пока нет", "Создай свой и добавляй треки через меню ⋮.") }
+        if (state.playlists.isEmpty() && !state.playlistsLoading) item(span = { GridItemSpan(maxLineSpan) }) { EmptyState(strings(R.string.playlists_screen_3), strings(R.string.playlists_screen_4)) }
         gridItems(state.playlists, key = { it.id }) { p ->
             RowCard(artworkUrl(p.coverArtwork ?: p.coverTrackId?.let { "/api/artwork/$it" }, 96), p.name,
-                "${p.trackCount} треков · ${when(p.type) { "smart" -> "Умный"; "generated" -> "Подборка"; else -> "Свой" }}",
+                strings(R.string.playlists_screen_8, trackCount(p.trackCount), when(p.type) { "smart" -> strings(R.string.playlists_screen_5); "generated" -> strings(R.string.playlists_screen_6); else -> strings(R.string.playlists_screen_7) }),
                 onClick = { onOpen(p.id) })
         }
     }
@@ -54,37 +57,37 @@ fun PlaylistDetailScreen(state: AppState, artworkUrl: (String?, Int) -> String?,
     LazyColumn(contentPadding = contentPadding) {
         if (state.playlistLoading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         if (p == null && !state.playlistLoading) item {
-            EmptyState("Не удалось открыть плейлист", "Проверь подключение и попробуй снова.")
-            TextButton(onClick = onRetry, modifier = Modifier.padding(horizontal = 16.dp)) { Text("Повторить") }
+            EmptyState(strings(R.string.playlists_screen_9), strings(R.string.playlists_screen_10))
+            TextButton(onClick = onRetry, modifier = Modifier.padding(horizontal = 16.dp)) { Text(strings(R.string.lyrics_screen_8)) }
         }
         if (p != null) {
             item {
                 Column(Modifier.padding(16.dp)) {
                     Text(p.name, style = MaterialTheme.typography.headlineSmall)
                     if (p.description.isNotBlank()) Text(p.description, Modifier.padding(top = 8.dp))
-                    Text("${p.trackCount} треков", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(trackCount(p.trackCount), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(Modifier.fillMaxWidth().padding(top = 12.dp)) {
                         Button(onClick = { onPlay(p.id, 0) }, enabled = p.tracks.any { it.trackId > 0 && !it.unresolved }) {
-                            Icon(Icons.Rounded.PlayArrow, null); Text("Слушать")
+                            Icon(Icons.Rounded.PlayArrow, null); Text(strings(R.string.playlists_screen_11))
                         }
-                        if (p.editable) IconButton(onClick = onAdd, enabled = !busy) { Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, "Добавить треки") }
-                        IconButton(onClick = { editing = true }, enabled = !busy) { Icon(Icons.Rounded.Edit, "Изменить название и описание") }
-                        IconButton(onClick = { deleting = true }, enabled = !busy) { Icon(Icons.Rounded.DeleteOutline, "Удалить плейлист") }
+                        if (p.editable) IconButton(onClick = onAdd, enabled = !busy) { Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, strings(R.string.main_activity_9)) }
+                        IconButton(onClick = { editing = true }, enabled = !busy) { Icon(Icons.Rounded.Edit, strings(R.string.playlists_screen_12)) }
+                        IconButton(onClick = { deleting = true }, enabled = !busy) { Icon(Icons.Rounded.DeleteOutline, strings(R.string.playlists_screen_13)) }
                     }
                 }
             }
-            if (p.tracks.isEmpty()) item { EmptyState("В плейлисте пока пусто", "Добавляй треки из библиотеки.") }
+            if (p.tracks.isEmpty()) item { EmptyState(strings(R.string.playlists_screen_14), strings(R.string.playlists_screen_15)) }
             itemsIndexed(p.tracks, key = { _, t -> t.itemId }) { index, item ->
                 var menu by remember { mutableStateOf(false) }
                 val t = item.asTrack()
-                RowCard(if (t.ready) artworkUrl(t.artworkPath, 96) else null, t.title ?: "Неизвестный трек",
-                    listOfNotNull(t.artist, if (!t.ready) "Нет в библиотеке" else null).joinToString(" · "),
+                RowCard(if (t.ready) artworkUrl(t.artworkPath, 96) else null, t.title ?: strings(R.string.playlists_screen_16),
+                    listOfNotNull(t.artist, if (!t.ready) strings(R.string.playlists_screen_17) else null).joinToString(" · "),
                     trailing = if (p.editable) ({
-                        IconButton(onClick = { menu = true }, enabled = !busy) { Icon(Icons.Rounded.MoreVert, "Действия с треком плейлиста") }
+                        IconButton(onClick = { menu = true }, enabled = !busy) { Icon(Icons.Rounded.MoreVert, strings(R.string.playlists_screen_18)) }
                         DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                            DropdownMenuItem(text = { Text("Выше") }, enabled = index > 0, onClick = { menu = false; onMove(p, index, -1) })
-                            DropdownMenuItem(text = { Text("Ниже") }, enabled = index < p.tracks.lastIndex, onClick = { menu = false; onMove(p, index, 1) })
-                            DropdownMenuItem(text = { Text("Убрать из плейлиста") }, onClick = { menu = false; onRemove(p.id, item.itemId) })
+                            DropdownMenuItem(text = { Text(strings(R.string.playlists_screen_19)) }, enabled = index > 0, onClick = { menu = false; onMove(p, index, -1) })
+                            DropdownMenuItem(text = { Text(strings(R.string.playlists_screen_20)) }, enabled = index < p.tracks.lastIndex, onClick = { menu = false; onMove(p, index, 1) })
+                            DropdownMenuItem(text = { Text(strings(R.string.playlists_screen_21)) }, onClick = { menu = false; onRemove(p.id, item.itemId) })
                         }
                     }) else null,
                     // Server indexes only resolved tracks. Imported unresolved rows cannot shift playback.
@@ -93,22 +96,22 @@ fun PlaylistDetailScreen(state: AppState, artworkUrl: (String?, Int) -> String?,
         }
     }
     if (editing && p != null) PlaylistEditor(p, { editing = false }) { name, description -> editing = false; onEdit(p, name, description) }
-    if (deleting && p != null) AlertDialog(onDismissRequest = { deleting = false }, title = { Text("Удалить «${p.name}»?") },
-        text = { Text("Сам плейлист будет удалён. Музыкальные файлы останутся в библиотеке.") },
-        confirmButton = { TextButton(onClick = { deleting = false; onDelete(p.id) }) { Text("Удалить") } },
-        dismissButton = { TextButton(onClick = { deleting = false }) { Text("Отмена") } })
+    if (deleting && p != null) AlertDialog(onDismissRequest = { deleting = false }, title = { Text(strings(R.string.playlists_screen_22, p.name)) },
+        text = { Text(strings(R.string.playlists_screen_23)) },
+        confirmButton = { TextButton(onClick = { deleting = false; onDelete(p.id) }) { Text(strings(R.string.playlists_screen_24)) } },
+        dismissButton = { TextButton(onClick = { deleting = false }) { Text(strings(R.string.account_activity_71)) } })
 }
 
 @Composable
 private fun PlaylistEditor(playlist: Playlist?, onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
     var name by rememberSaveable { mutableStateOf(playlist?.name.orEmpty()) }
     var description by rememberSaveable { mutableStateOf(playlist?.description.orEmpty()) }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (playlist == null) "Новый плейлист" else "Изменить плейлист") },
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (playlist == null) strings(R.string.playlists_screen_25) else strings(R.string.playlists_screen_26)) },
         text = { Column {
-            OutlinedTextField(name, { name = it }, label = { Text("Название") }, singleLine = true)
-            OutlinedTextField(description, { description = it }, label = { Text("Описание") }, maxLines = 4, modifier = Modifier.padding(top = 8.dp))
-        } }, confirmButton = { TextButton(onClick = { onSave(name, description) }, enabled = name.isNotBlank()) { Text("Сохранить") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } })
+            OutlinedTextField(name, { name = it }, label = { Text(strings(R.string.playlists_screen_27)) }, singleLine = true)
+            OutlinedTextField(description, { description = it }, label = { Text(strings(R.string.playlists_screen_28)) }, maxLines = 4, modifier = Modifier.padding(top = 8.dp))
+        } }, confirmButton = { TextButton(onClick = { onSave(name, description) }, enabled = name.isNotBlank()) { Text(strings(R.string.account_activity_58)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(strings(R.string.account_activity_71)) } })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -116,13 +119,13 @@ private fun PlaylistEditor(playlist: Playlist?, onDismiss: () -> Unit, onSave: (
 fun AddToPlaylistSheet(playlists: List<Playlist>, busy: Boolean, onSelect: (Long) -> Unit, onCreate: () -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 24.dp)) {
-            item { SectionTitle("Добавить в плейлист") }
-            if (playlists.none { it.editable }) item { EmptyState("Сначала создай плейлист", "Треки можно добавлять в собственные плейлисты.") }
+            item { SectionTitle(strings(R.string.playlists_screen_29)) }
+            if (playlists.none { it.editable }) item { EmptyState(strings(R.string.playlists_screen_30), strings(R.string.playlists_screen_31)) }
             items(playlists.filter { it.editable }, key = { it.id }) { p ->
-                ListItem(headlineContent = { Text(p.name) }, supportingContent = { Text("${p.trackCount} треков") },
-                    trailingContent = { TextButton(onClick = { onSelect(p.id) }, enabled = !busy) { Text("Добавить") } })
+                ListItem(headlineContent = { Text(p.name) }, supportingContent = { Text(trackCount(p.trackCount)) },
+                    trailingContent = { TextButton(onClick = { onSelect(p.id) }, enabled = !busy) { Text(strings(R.string.playlists_screen_32)) } })
             }
-            item { TextButton(onClick = onCreate, enabled = !busy, modifier = Modifier.padding(horizontal = 16.dp)) { Text("Создать плейлист") } }
+            item { TextButton(onClick = onCreate, enabled = !busy, modifier = Modifier.padding(horizontal = 16.dp)) { Text(strings(R.string.playlists_screen_33)) } }
         }
     }
 }

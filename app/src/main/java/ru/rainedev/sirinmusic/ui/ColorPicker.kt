@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic.ui
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -23,19 +25,19 @@ fun ColorPicker(initial: Int, onApply: (Int) -> Unit) {
     val parsed = hex.removePrefix("#").takeIf { it.length == 6 }?.takeIf { it.all { ch -> ch in "0123456789abcdefABCDEF" } }?.toLongOrNull(16)
     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
         Box(Modifier.fillMaxWidth().height(56.dp).background(Color(parsed?.let { (it or 0xFF000000L).toInt() } ?: chosen)))
-        Text("Оттенок", Modifier.padding(top = 12.dp))
+        Text(strings(R.string.color_picker_1), Modifier.padding(top = 12.dp))
         Box(Modifier.fillMaxWidth().height(8.dp).background(Brush.horizontalGradient(
             (0..6).map { Color.hsv(it * 60f, 1f, 1f) })))
         Slider(hue, { hue = it }, valueRange = 0f..360f)
-        Text("Насыщенность")
+        Text(strings(R.string.color_picker_2))
         Slider(saturation, { saturation = it }, valueRange = 0f..1f)
-        Text("Яркость")
+        Text(strings(R.string.color_picker_3))
         Slider(brightness, { brightness = it }, valueRange = 0f..1f)
-        OutlinedTextField(hex, { hex = it.take(7) }, label = { Text("Цвет HEX") },
+        OutlinedTextField(hex, { hex = it.take(7) }, label = { Text(strings(R.string.color_picker_4)) },
             prefix = { Text("#") }, singleLine = true, isError = parsed == null,
-            supportingText = { Text("Шесть символов: например 6750A4") }, modifier = Modifier.fillMaxWidth())
+            supportingText = { Text(strings(R.string.color_picker_5)) }, modifier = Modifier.fillMaxWidth())
         Button(enabled = parsed != null, onClick = { parsed?.let { onApply((it or 0xFF000000L).toInt()) } }) {
-            Text("Применить цвет")
+            Text(strings(R.string.color_picker_6))
         }
     }
 }

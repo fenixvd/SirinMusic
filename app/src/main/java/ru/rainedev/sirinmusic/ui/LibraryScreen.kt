@@ -1,5 +1,8 @@
 package ru.rainedev.sirinmusic.ui
 
+import ru.rainedev.sirinmusic.trackCount
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -53,20 +56,20 @@ fun LibraryScreen(state: AppState, ratings: Map<Long, String>, ratingPending: Se
         }
     }
     Column(Modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding())) {
-        OutlinedTextField(value = query, onValueChange = { query = it }, label = { Text("Поиск по библиотеке") },
+        OutlinedTextField(value = query, onValueChange = { query = it }, label = { Text(strings(R.string.library_screen_1)) },
             singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
         if (!favoritesOnly) FilterChip(selected = favoritesFilter, onClick = { favoritesFilter = !favoritesFilter },
-            label = { Text("Избранное") }, modifier = Modifier.padding(horizontal = 16.dp))
-        if (selectionMode) Text("Нажми на трек, чтобы добавить его в плейлист", modifier = Modifier.padding(16.dp))
+            label = { Text(strings(R.string.main_activity_8)) }, modifier = Modifier.padding(horizontal = 16.dp))
+        if (selectionMode) Text(strings(R.string.library_screen_2), modifier = Modifier.padding(16.dp))
         PrimaryTabRow(selectedTabIndex = tab) {
-            (if (selectionMode) listOf("Треки") else listOf("Треки", "Артисты", "Альбомы")).forEachIndexed { index, title ->
+            (if (selectionMode) listOf(strings(R.string.library_screen_3)) else listOf(strings(R.string.library_screen_3), strings(R.string.library_screen_4), strings(R.string.library_screen_5))).forEachIndexed { index, title ->
                 Tab(selected = tab == index, onClick = { tab = index }, text = { Text(title) })
             }
         }
         if (state.libraryLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
         LazyVerticalGrid(columns = GridCells.Adaptive(360.dp), modifier = Modifier.weight(1f), contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding())) {
             val empty = when(tab) { 0 -> shownTracks.isEmpty(); 1 -> shownArtists.isEmpty(); else -> shownAlbums.isEmpty() }
-            if (empty && !state.libraryLoading) item(span = { GridItemSpan(maxLineSpan) }) { EmptyState(if (favoritesFilter) "В избранном пока пусто" else "Ничего не найдено", "Измени поиск или обнови библиотеку в профиле.") }
+            if (empty && !state.libraryLoading) item(span = { GridItemSpan(maxLineSpan) }) { EmptyState(if (favoritesFilter) strings(R.string.library_screen_6) else strings(R.string.library_screen_7), strings(R.string.library_screen_8)) }
             when (tab) {
                 0 -> items(shownTracks, key = { it.key }, span = { GridItemSpan(maxLineSpan) }) { t ->
                     TrackRow(t, artworkUrl, t.key in favoriteIds, ratings[t.key], "favorite:${t.key}" in state.busy,
@@ -77,12 +80,12 @@ fun LibraryScreen(state: AppState, ratings: Map<Long, String>, ratingPending: Se
                 1 -> items(shownArtists, key = { it.artist }) { a ->
                     val cover = artworkUrl(a.artwork ?: a.coverTrackId?.let { "/api/artwork/$it" }, 96)
                     val photo = artworkUrl(state.artistPhotos[artistPhotoKey(a.artist)], 96)
-                    RowCard(photo ?: cover, a.artist, "${a.tracks} треков", fallbackArtworkUrl = cover,
+                    RowCard(photo ?: cover, a.artist, trackCount(a.tracks), fallbackArtworkUrl = cover,
                         trailing = { FavoriteButton(a.artist in state.favoriteArtists, "artist:${a.artist}" !in state.busy) { onArtistFavorite(a.artist) } },
                         onClick = { onArtist(a.artist) })
                 }
                 else -> items(shownAlbums, key = { "${it.artist.length}:${it.artist}${it.album}" }) { a ->
-                    RowCard(artworkUrl(a.artwork ?: a.coverTrackId?.let { "/api/artwork/$it" }, 96), a.album, "${a.artist} · ${a.tracks} треков",
+                    RowCard(artworkUrl(a.artwork ?: a.coverTrackId?.let { "/api/artwork/$it" }, 96), a.album, strings(R.string.library_screen_9, a.artist, trackCount(a.tracks)),
                         trailing = { FavoriteButton((a.artist to a.album) in state.favoriteAlbums, "album:${a.artist}/${a.album}" !in state.busy) { onAlbumFavorite(a.artist, a.album) } },
                         onClick = { onAlbum(a.artist, a.album) })
                 }

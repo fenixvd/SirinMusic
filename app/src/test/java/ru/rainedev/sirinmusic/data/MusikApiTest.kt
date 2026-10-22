@@ -8,12 +8,13 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Request
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 
-class MusikApiTest {
+class MusikApiTest : ru.rainedev.sirinmusic.LocalizedTest() {
     private lateinit var server: HttpServer
     private lateinit var api: MusikApi
     private var body = "{}"
@@ -33,6 +34,73 @@ class MusikApiTest {
         api = MusikApi(ServerConnection("http://127.0.0.1:${server.address.port}", "fixture-token", "fixture-client"))
     }
     @After fun stop() { server.stop(0); api.client.connectionPool.evictAll(); api.client.dispatcher.executorService.shutdown() }
+
+    @Test fun trackPassportUsesAuthenticatedDetailRouteAndDecodesMeasuredAndProfileData() = runBlocking {
+        body = """{"id":42,"passport":{"format":"MP3","bitrate":320000,"sample_rate":44100,"channels":2,"lufs":-11.3,"bpm":86.0,"key":"D","mode":"minor","year":2009,"duration":190,"genres":["Rock","Alternative"],"plays":2,"early_skips":1,"last_played_at":"2026-10-18T10:00:00Z"}}"""
+        val detail = api.trackDetails(42)
+        assertEquals(42L, detail.key)
+        assertEquals(44100L, detail.passport!!.sampleRate)
+        assertEquals(2, detail.passport!!.plays)
+        assertEquals(listOf("Rock", "Alternative"), detail.passport!!.genres)
+        val request = requests.take()
+        assertEquals("GET", request.first)
+        assertEquals("/api/tracks/42", request.second)
+        assertEquals("Bearer fixture-token", authorization.take())
+    }
+
+    @Test fun missingOrPartialPassportDoesNotInventMeasurements() = runBlocking {
+        body = """{"id":42}"""
+        assertNull(api.trackDetails(42).passport)
+        body = """{"id":42,"passport":{"format":"FLAC"}}"""
+        val p = api.trackDetails(42).passport!!
+        assertEquals("FLAC", p.format)
+        assertNull(p.bitrate)
+        assertNull(p.plays)
+    }
+
+    @Test fun closeEventRetryUsesExplicitIdAndReasonAndDecodesIgnoredReply() = runBlocking {
+        body = """{"ignored":true,"reason":"already_closed","next":{"id":42,"impression_id":"same"},"queue":[]}"""
+        repeat(2) {
+            val reply = api.event("track_end", 42, "s", "same", 120.0, 120.0, 115.0,
+                eventId = "close-once", reason = "completed")
+            assertTrue(reply.ignored)
+            assertEquals("already_closed", reply.reason)
+            assertEquals("same", reply.next!!.impressionId)
+            val payload = Json.parseToJsonElement(requests.take().third).jsonObject
+            assertEquals("close-once", payload.getValue("event_id").jsonPrimitive.content)
+            assertEquals("completed", payload.getValue("reason").jsonPrimitive.content)
+        }
+    }
+    @Test fun legacyEventResponseDoesNotNeedTheNewFields() = runBlocking {
+        body = """{"next":{"id":43},"fixed":false}"""
+        val reply = api.event("skip", 42, "s", "i", 1.0, 120.0, 1.0)
+        assertFalse(reply.ignored); assertNull(reply.reason)
+        assertEquals(43L, reply.next!!.key)
+    }
+    @Test fun favoriteRecommendationsDecodeAllThreeKindsAndUnknownRankerFields() = runBlocking {
+        body = """{"ok":true,"tracks":[{"id":42,"title":"Recommended","source":"likes"}],"artists":[{"artist":"Artist","cover_track_id":7}],"albums":[{"artist":"Artist","album":"Album"}],"based_on":{"artists":["Liked artist"]},"explanation":"по звучанию и лайкам"}"""
+        val result = api.favoriteRecommendations()
+        assertEquals("/api/recommend/favorites", requests.take().second)
+        assertEquals(42L, result.tracks.single().key)
+        assertEquals("Artist", result.artists.single().artist)
+        assertEquals("Album", result.albums.single().album)
+        assertEquals("по звучанию и лайкам", result.explanation)
+    }
+    @Test fun emptyFavoriteRecommendationsRetainTheServerHint() = runBlocking {
+        body = """{"ok":false,"empty":true,"tracks":[],"artists":[],"albums":[],"hint":"Добавь любимую музыку"}"""
+        val result = api.favoriteRecommendations()
+        assertTrue(result.empty); assertTrue(result.tracks.isEmpty())
+        assertEquals("Добавь любимую музыку", result.hint)
+    }
+    @Test fun compatibleStreamKeepsTheAuthenticatedOriginAndReplacesQuality() {
+        val url = api.compatibleStreamUrl(Track(id = 42, stream = "/api/stream/42?q=mobile&other=1")).toHttpUrl()
+        assertEquals("/api/stream/42", url.encodedPath)
+        assertEquals(listOf("mp3"), url.queryParameterValues("q"))
+        assertEquals("1", url.queryParameter("other"))
+        assertThrows(IllegalArgumentException::class.java) {
+            api.compatibleStreamUrl(Track(id = 42, stream = "https://other.example/api/stream/42"))
+        }
+    }
 
     @Test fun nestedFavoritesAndUnknownFields() = runBlocking {
         body = """{"tracks":[{"track_id":42,"track":{"id":42,"title":"Song","artist":"Artist","album":"Album"}}],"artists":[{"artist":"Artist","tracks":3}],"albums":[{"artist":"Artist","album":"Album","tracks":2}],"counts":{"tracks":1}}"""

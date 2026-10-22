@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic.ui
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.*
@@ -32,7 +34,7 @@ fun LyricsScreen(api: MusikApi, player: PlayerUi, onSeek: (Double) -> Unit, cont
         loading = true; error = null; lyrics = null
         try { lyrics = api.lyrics(id) }
         catch (e: CancellationException) { throw e }
-        catch (e: Exception) { error = e.message ?: "Не удалось загрузить текст" }
+        catch (e: Exception) { error = e.message ?: strings(R.string.lyrics_screen_1) }
         finally { loading = false }
     }
     val lines = remember(lyrics) { parseLrc(lyrics?.syncedLyrics.orEmpty()) }
@@ -43,22 +45,22 @@ fun LyricsScreen(api: MusikApi, player: PlayerUi, onSeek: (Double) -> Unit, cont
     LazyColumn(state = list, contentPadding = contentPadding, modifier = Modifier.fillMaxSize()) {
         item {
             Column(Modifier.padding(16.dp)) {
-                Text(player.current?.title ?: "Ничего не играет", style = MaterialTheme.typography.titleLarge)
+                Text(player.current?.title ?: strings(R.string.lyrics_screen_2), style = MaterialTheme.typography.titleLarge)
                 player.current?.artist?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                if (lines.isNotEmpty()) ListItem(headlineContent = { Text("Следовать за музыкой") },
-                    supportingContent = { Text("Нажми на строку, чтобы перейти к ней") },
+                if (lines.isNotEmpty()) ListItem(headlineContent = { Text(strings(R.string.lyrics_screen_3)) },
+                    supportingContent = { Text(strings(R.string.lyrics_screen_4)) },
                     trailingContent = { Switch(follow, onCheckedChange = { follow = it }) })
-                if (lyrics?.source?.isNotBlank() == true) Text("Источник: ${lyrics!!.source}", style = MaterialTheme.typography.labelMedium)
+                if (lyrics?.source?.isNotBlank() == true) Text(strings(R.string.lyrics_screen_5, lyrics!!.source), style = MaterialTheme.typography.labelMedium)
             }
         }
         when {
-            id == null -> item { EmptyState("Выбери трек", "Текст появится здесь во время воспроизведения.") }
+            id == null -> item { EmptyState(strings(R.string.lyrics_screen_6), strings(R.string.lyrics_screen_7)) }
             loading -> item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             error != null -> item {
-                EmptyState("Не удалось загрузить текст", error!!)
-                TextButton(onClick = { retry++ }, modifier = Modifier.padding(horizontal = 16.dp)) { Text("Повторить") }
+                EmptyState(strings(R.string.lyrics_screen_1), error!!)
+                TextButton(onClick = { retry++ }, modifier = Modifier.padding(horizontal = 16.dp)) { Text(strings(R.string.lyrics_screen_8)) }
             }
-            lyrics?.instrumental == true -> item { EmptyState("Инструментальная композиция", "У этого трека нет слов.") }
+            lyrics?.instrumental == true -> item { EmptyState(strings(R.string.lyrics_screen_9), strings(R.string.lyrics_screen_10)) }
             lines.isNotEmpty() -> itemsIndexed(lines) { index, line ->
                 Surface(color = if (index == active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
                     modifier = Modifier.fillMaxWidth().clickable { onSeek(line.seconds) }) {
@@ -70,7 +72,7 @@ fun LyricsScreen(api: MusikApi, player: PlayerUi, onSeek: (Double) -> Unit, cont
             lyrics?.plainLyrics?.isNotBlank() == true -> item {
                 SelectionContainer { Text(lyrics!!.plainLyrics, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(24.dp)) }
             }
-            else -> item { EmptyState("Текст пока не найден", "На сервере нет текста для этой записи.") }
+            else -> item { EmptyState(strings(R.string.lyrics_screen_11), strings(R.string.lyrics_screen_12)) }
         }
     }
 }

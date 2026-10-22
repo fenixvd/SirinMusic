@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic.data
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -42,7 +44,7 @@ class AccountApi(baseUrl: String) {
     val client = OkHttpClient.Builder().cookieJar(jar).followRedirects(false).followSslRedirects(false)
         .connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
     private fun quoted(value: String) = JsonPrimitive(value).toString()
-    private fun target(path: String): HttpUrl = base.resolve(path)?.also { require(sameOrigin(base, it)) { "Другой сервер" } } ?: error("Некорректный адрес")
+    private fun target(path: String): HttpUrl = base.resolve(path)?.also { require(sameOrigin(base, it)) { strings(R.string.account_api_1) } } ?: error(strings(R.string.account_api_2))
     private fun segment(value: String) = java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
     private suspend fun raw(path: String, method: String = "GET", body: String? = null): String = withContext(Dispatchers.IO) {
         val url = target(path)
@@ -61,12 +63,12 @@ class AccountApi(baseUrl: String) {
         response.use {
             val text = it.body.string()
             if (!it.isSuccessful) throw ApiException(it.code, when (it.code) {
-                401 -> "Сеанс закончился или имя и пароль неверны. Войди снова."
-                403 -> "Нет прав или запрос отклонён проверкой Origin/CSRF."
-                404 -> "Эта операция не поддерживается сервером."
-                409 -> "Операция запрещена: основной профиль и последнего активного администратора нельзя удалить."
-                429 -> "Слишком много запросов. Подожди немного."
-                else -> "Сервер отклонил запрос (${it.code}). Проверь введённые данные."
+                401 -> strings(R.string.account_api_3)
+                403 -> strings(R.string.account_api_4)
+                404 -> strings(R.string.account_api_5)
+                409 -> strings(R.string.account_api_6)
+                429 -> strings(R.string.account_api_7)
+                else -> strings(R.string.account_api_8, it.code)
             })
             text
         }
@@ -74,14 +76,14 @@ class AccountApi(baseUrl: String) {
     private suspend inline fun <reified T> get(path: String): T = json.decodeFromString(raw(path))
     suspend fun me(): AccountMe = get("/api/auth/me")
     suspend fun login(username: String, password: String): AccountMe {
-        require(username.isNotBlank() && password.length in 8..256) { "Введи имя и пароль от 8 символов" }
+        require(username.isNotBlank() && password.length in 8..256) { strings(R.string.account_api_9) }
         jar.clear()
         raw("/api/auth/login", "POST", "{\"username\":${quoted(username.trim())},\"password\":${quoted(password)}}")
-        return me().also { require(it.ok && it.multiUser) { "Не удалось открыть сеанс аккаунта. Используй HTTPS и режим пользователей." } }
+        return me().also { require(it.ok && it.multiUser) { strings(R.string.account_api_10) } }
     }
     suspend fun logout() { try { raw("/api/auth/logout", "POST", "{}") } finally { jar.clear() } }
     suspend fun password(current: String, new: String) {
-        require(new.length in 8..256) { "Новый пароль должен содержать от 8 до 256 символов" }
+        require(new.length in 8..256) { strings(R.string.account_api_11) }
         raw("/api/account/password", "POST", "{\"current\":${quoted(current)},\"new\":${quoted(new)}}")
     }
     suspend fun createProfile(name: String) { raw("/api/profiles", "POST", "{\"name\":${quoted(name.trim())}}") }
@@ -95,7 +97,7 @@ class AccountApi(baseUrl: String) {
     suspend fun users(): List<ManagedUser> = get("/api/admin/users")
     suspend fun invitations(): List<ManagedInvitation> = get("/api/admin/invitations")
     suspend fun invite(email: String, hours: Int): IssuedInvitation {
-        require(hours in 1..168) { "Срок приглашения: от 1 до 168 часов" }
+        require(hours in 1..168) { strings(R.string.account_api_12) }
         return json.decodeFromString(raw("/api/admin/invitations", "POST", "{\"email\":${quoted(email.trim())},\"ttl_hours\":$hours}"))
     }
     suspend fun revokeInvitation(id: String) { raw("/api/admin/invitations/${segment(id)}", "DELETE") }

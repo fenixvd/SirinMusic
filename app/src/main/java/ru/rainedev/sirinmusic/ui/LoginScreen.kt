@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic.ui
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -79,7 +81,7 @@ fun LoginScreen(
             scanHint = null
             onSubmit(next.form.url, next.form.token)
         } else {
-            scanHint = "В QR-коде только адрес сервера — войди по паролю или введи токен."
+            scanHint = strings(R.string.login_screen_1)
         }
     }
 
@@ -92,7 +94,7 @@ fun LoginScreen(
     val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
         val raw = result.contents ?: return@rememberLauncherForActivityResult // closed without a code
         val link = ConnectLink.parse(raw)
-        if (link == null) scanHint = "Это не QR-код musik" else useLink(link)
+        if (link == null) scanHint = strings(R.string.login_screen_2) else useLink(link)
     }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -114,7 +116,7 @@ fun LoginScreen(
         }
         Text("Sirin Music", style = MaterialTheme.typography.displaySmall)
         Text(
-            "Подключение к своему musik",
+            strings(R.string.login_screen_3),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 24.dp),
@@ -126,7 +128,7 @@ fun LoginScreen(
                     ScanOptions()
                         .setCaptureActivity(ru.rainedev.sirinmusic.ui.qr.QrScanActivity::class.java)
                         .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                        .setPrompt("Наведи камеру на QR-код: веб-интерфейс musik → Профиль → Настройки")
+                        .setPrompt(strings(R.string.login_screen_4))
                         .setBeepEnabled(false)
                         .setOrientationLocked(false)
                 )
@@ -136,10 +138,10 @@ fun LoginScreen(
         ) {
             Icon(Icons.Rounded.QrCodeScanner, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Сканировать QR-код")
+            Text(strings(R.string.login_screen_5))
         }
         Text(
-            scanHint ?: "Или введи данные вручную:",
+            scanHint ?: strings(R.string.login_screen_6),
             color = if (scanHint != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier
@@ -148,22 +150,22 @@ fun LoginScreen(
         )
 
         if (profiles.isNotEmpty()) {
-            Text("Выбери профиль", style = MaterialTheme.typography.titleLarge)
-            Text("Этот телефон будет подключён к выбранному профилю.",
+            Text(strings(R.string.account_activity_19), style = MaterialTheme.typography.titleLarge)
+            Text(strings(R.string.login_screen_7),
                 style = MaterialTheme.typography.bodyMedium)
             profiles.forEach { profile ->
                 OutlinedButton(onClick = { onChooseProfile(profile.id) }, enabled = !checking,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                    Text(profile.name + if (profile.isDefault) " · основной" else "")
+                    Text(profile.name + if (profile.isDefault) strings(R.string.account_activity_17) else "")
                 }
             }
-            TextButton(onClick = { onCancelProfiles(); password = "" }, enabled = !checking) { Text("Назад") }
+            TextButton(onClick = { onCancelProfiles(); password = "" }, enabled = !checking) { Text(strings(R.string.about_activity_2)) }
         } else {
         OutlinedTextField(
             value = url,
             onValueChange = { url = it },
-            label = { Text("Адрес сервера") },
-            supportingText = { Text("например https://music.example.org или http://192.168.1.10:8787") },
+            label = { Text(strings(R.string.server_settings_activity_10)) },
+            supportingText = { Text(strings(R.string.login_screen_8)) },
             singleLine = true,
             enabled = !checking,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -172,15 +174,15 @@ fun LoginScreen(
 
         TextButton(onClick = { passwordMode = !passwordMode; password = ""; scanHint = null },
             enabled = !checking) {
-            Text(if (passwordMode) "Войти по токену" else "Войти по паролю")
+            Text(if (passwordMode) strings(R.string.login_screen_9) else strings(R.string.login_screen_10))
         }
         if (passwordMode) {
             OutlinedTextField(value = username, onValueChange = { username = it },
-                label = { Text("Имя пользователя") },
-                supportingText = { Text("Для сервера с одним владельцем оставь пустым") },
+                label = { Text(strings(R.string.login_screen_11)) },
+                supportingText = { Text(strings(R.string.login_screen_12)) },
                 singleLine = true, enabled = !checking, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = password, onValueChange = { password = it },
-                label = { Text("Пароль") }, singleLine = true, enabled = !checking,
+                label = { Text(strings(R.string.account_activity_9)) }, singleLine = true, enabled = !checking,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
@@ -188,7 +190,7 @@ fun LoginScreen(
         OutlinedTextField(
             value = token,
             onValueChange = { token = it },
-            label = { Text("API-токен") },
+            label = { Text(strings(R.string.account_activity_33)) },
             enabled = !checking,
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -221,12 +223,12 @@ fun LoginScreen(
             if (checking) {
                 CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
             }
-            Text("Проверить и войти")
+            Text(strings(R.string.login_screen_13))
         }
         if (profiles.isNotEmpty() && checking) CircularProgressIndicator(Modifier.padding(top = 12.dp))
         if (profiles.isEmpty()) TextButton(onClick = { onAnonymousSubmit(url) },
             enabled = !checking && url.isNotBlank()) {
-            Text("Подключиться без авторизации")
+            Text(strings(R.string.login_screen_14))
         }
     }
     }

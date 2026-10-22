@@ -33,6 +33,7 @@ data class Track(
     val score: Double? = null,
     val ready: Boolean = true,
     val position: Int? = null,
+    val passport: TrackPassport? = null,
 ) {
     /** В очереди сервер зовёт идентификатор track_id, в «сейчас играет» — id. */
     val key: Long get() = if (id != 0L) id else (trackId ?: 0L)
@@ -63,6 +64,18 @@ data class EventReply(
     val ended: Boolean = false,
     val fixed: Boolean = false,
     val rating: String? = null,
+    val ignored: Boolean = false,
+    val reason: String? = null,
+)
+
+@Serializable
+data class FavoriteRecommendations(
+    val tracks: List<Track> = emptyList(),
+    val artists: List<ArtistRow> = emptyList(),
+    val albums: List<AlbumRow> = emptyList(),
+    val empty: Boolean = false,
+    val hint: String? = null,
+    val explanation: String? = null,
 )
 
 @Serializable
@@ -285,3 +298,23 @@ data class ServerDir(val name: String = "", val path: String = "")
 data class ServerDirs(val path: String = "", val parent: String = "", val dirs: List<ServerDir>? = emptyList(), val roots: List<ServerDir>? = emptyList())
 @kotlinx.serialization.Serializable
 data class ServerExternalIp(val ip: String = "", val source: String = "", @SerialName("checked_at") val checkedAt: String = "")
+
+/** GET /api/tracks/{id}: measured audio and counters scoped to the authenticated profile. */
+@Serializable
+data class TrackPassport(
+    val format: String? = null,
+    val bitrate: Long? = null,
+    @SerialName("sample_rate") val sampleRate: Long? = null,
+    val channels: Int? = null,
+    val lufs: Double? = null,
+    val bpm: Double? = null,
+    val key: String? = null,
+    val mode: String? = null,
+    val year: Int? = null,
+    val duration: Double? = null,
+    val genres: List<String> = emptyList(),
+    val plays: Int? = null,
+    val finishes: Int? = null,
+    @SerialName("early_skips") val earlySkips: Int? = null,
+    @SerialName("last_played_at") val lastPlayedAt: String? = null,
+)

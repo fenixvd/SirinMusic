@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic.ui
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -57,11 +59,11 @@ fun MiniPlayer(
                 IconButton(onClick = onToggle, enabled = !ui.busy) {
                     Icon(
                         if (ui.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                        contentDescription = if (ui.isPlaying) "Пауза" else "Играть",
+                        contentDescription = if (ui.isPlaying) strings(R.string.mini_player_1) else strings(R.string.mini_player_2),
                     )
                 }
                 IconButton(onClick = onSkip, enabled = !ui.busy) {
-                    Icon(Icons.Rounded.SkipNext, contentDescription = "Дальше")
+                    Icon(Icons.Rounded.SkipNext, contentDescription = strings(R.string.mini_player_3))
                 }
             }
         }

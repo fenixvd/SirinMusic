@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
@@ -35,7 +37,7 @@ import kotlinx.coroutines.launch
 import ru.rainedev.sirinmusic.data.*
 import ru.rainedev.sirinmusic.ui.theme.SirinMusicTheme
 
-class SettingsActivity : ComponentActivity() {
+class SettingsActivity : ru.rainedev.sirinmusic.SirinActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); enableEdgeToEdge()
         val app = application as SirinApp
@@ -49,6 +51,7 @@ class SettingsActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScreen(app: SirinApp, appearance: Appearance, onBack: () -> Unit) {
+    val activity = checkNotNull(androidx.activity.compose.LocalActivity.current) as SettingsActivity
     var pageName by rememberSaveable { mutableStateOf<String?>(null) }
     val page = pageName?.let { SettingsPage.valueOf(it) }
     var url by rememberSaveable { mutableStateOf(app.settings.baseUrl) }
@@ -66,9 +69,9 @@ private fun SettingsScreen(app: SirinApp, appearance: Appearance, onBack: () -> 
     val wide = maxWidth >= 840.dp
     BackHandler(enabled = !wide && page != null) { pageName = null }
     val activePage = page ?: if (wide) SettingsPage.APPEARANCE else null
-    Scaffold(topBar = { TopAppBar(title = { Text(if (wide) "Настройки" else page?.title ?: "Настройки") }, navigationIcon = {
+    Scaffold(topBar = { TopAppBar(title = { Text(if (wide) strings(R.string.main_activity_11) else page?.title ?: strings(R.string.main_activity_11)) }, navigationIcon = {
         IconButton(onClick = { if (!wide && page != null) pageName = null else onBack() }) {
-            Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Назад")
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, strings(R.string.about_activity_2))
         }
     }) }, snackbarHost = { SnackbarHost(snack) }) { padding ->
         Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
@@ -76,7 +79,7 @@ private fun SettingsScreen(app: SirinApp, appearance: Appearance, onBack: () -> 
             if (wide || activePage == null) {
                 Column(Modifier.then(if (wide) Modifier.width(320.dp) else Modifier.weight(1f))
                     .verticalScroll(rememberScrollState()).padding(16.dp)) {
-                    Text("Настрой приложение под себя", style = MaterialTheme.typography.titleLarge,
+                    Text(strings(R.string.settings_activity_1), style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.padding(bottom = 16.dp))
                     SettingsMenu(activePage, { pageName = it.name },
                         onAccount = { app.startActivity(android.content.Intent(app, AccountActivity::class.java)
@@ -92,22 +95,32 @@ private fun SettingsScreen(app: SirinApp, appearance: Appearance, onBack: () -> 
             if (activePage != null) key(activePage) {
             Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).imePadding().padding(24.dp)) {
             if (activePage == SettingsPage.APPEARANCE) {
-            Text("Внешний вид", style = MaterialTheme.typography.titleLarge)
-            Text("Тема", Modifier.padding(top = 16.dp), style = MaterialTheme.typography.titleMedium)
+            Text(strings(R.string.language_title), style = MaterialTheme.typography.titleMedium)
+            Text(strings(R.string.language_summary), style = MaterialTheme.typography.bodySmall)
+            val language = AppLanguage.selection(activity)
+            listOf("" to strings(R.string.settings_activity_4), "ru" to "Русский", "en" to "English").forEach { (code, label) ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = language == code, onClick = { AppLanguage.set(activity, code) })
+                    TextButton(onClick = { AppLanguage.set(activity, code) }) { Text(label) }
+                }
+            }
+            HorizontalDivider(Modifier.padding(vertical = 16.dp))
+            Text(strings(R.string.settings_activity_2), style = MaterialTheme.typography.titleLarge)
+            Text(strings(R.string.settings_activity_3), Modifier.padding(top = 16.dp), style = MaterialTheme.typography.titleMedium)
             ThemeMode.entries.forEach { mode ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     RadioButton(selected = appearance.theme == mode, onClick = { app.settings.setAppearance(appearance.copy(theme = mode)) })
                     TextButton(onClick = { app.settings.setAppearance(appearance.copy(theme = mode)) }) {
-                        Text(when(mode) { ThemeMode.SYSTEM -> "Как в системе"; ThemeMode.LIGHT -> "Светлая"; ThemeMode.DARK -> "Тёмная" })
+                        Text(when(mode) { ThemeMode.SYSTEM -> strings(R.string.settings_activity_4); ThemeMode.LIGHT -> strings(R.string.settings_activity_5); ThemeMode.DARK -> strings(R.string.settings_activity_6) })
                     }
                 }
             }
-            ListItem(headlineContent = { Text("Цвета из обоев") }, supportingContent = {
-                Text(if (Build.VERSION.SDK_INT >= 31) "Material You" else "Доступно с Android 12")
+            ListItem(headlineContent = { Text(strings(R.string.settings_activity_7)) }, supportingContent = {
+                Text(if (Build.VERSION.SDK_INT >= 31) "Material You" else strings(R.string.settings_activity_8))
             }, trailingContent = { Switch(checked = appearance.dynamicColor && Build.VERSION.SDK_INT >= 31,
                 enabled = Build.VERSION.SDK_INT >= 31, onCheckedChange = { app.settings.setAppearance(appearance.copy(dynamicColor = it)) }) })
             if (!appearance.dynamicColor || Build.VERSION.SDK_INT < 31) {
-                Text("Палитра", style = MaterialTheme.typography.titleMedium)
+                Text(strings(R.string.settings_activity_9), style = MaterialTheme.typography.titleMedium)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Palette.entries.forEach { palette ->
                         FilterChip(selected = appearance.palette == palette,
@@ -123,40 +136,40 @@ private fun SettingsScreen(app: SirinApp, appearance: Appearance, onBack: () -> 
             }
             }
             if (activePage == SettingsPage.STORAGE) {
-            Text("Хранилище", style = MaterialTheme.typography.titleLarge)
-            Text("Кеш обложек: ${android.text.format.Formatter.formatShortFileSize(app, cacheBytes)} из 64 МБ",
+            Text(strings(R.string.settings_activity_10), style = MaterialTheme.typography.titleLarge)
+            Text(strings(R.string.settings_activity_11, android.text.format.Formatter.formatShortFileSize(app, cacheBytes)),
                 Modifier.padding(top = 12.dp))
-            Text("Музыка воспроизводится с сервера без сохранения на диск.", style = MaterialTheme.typography.bodySmall)
+            Text(strings(R.string.settings_activity_12), style = MaterialTheme.typography.bodySmall)
             OutlinedButton(enabled = !clearing, onClick = {
                 clearing = true
                 scope.launch {
                     try {
                         app.imageCache.clear()
                         cacheBytes = app.imageCache.diskBytes()
-                        snack.showSnackbar("Кеш обложек очищен")
+                        snack.showSnackbar(strings(R.string.settings_activity_13))
                     } catch (e: CancellationException) { throw e }
-                    catch (_: Exception) { snack.showSnackbar("Не удалось очистить кеш") }
+                    catch (_: Exception) { snack.showSnackbar(strings(R.string.settings_activity_14)) }
                     finally { clearing = false }
                 }
-            }, modifier = Modifier.padding(top = 12.dp)) { Text(if (clearing) "Очищаю…" else "Очистить кеш") }
+            }, modifier = Modifier.padding(top = 12.dp)) { Text(if (clearing) strings(R.string.settings_activity_15) else strings(R.string.settings_activity_16)) }
 
             }
             if (activePage == SettingsPage.CONNECTION) {
-            Text("Подключение", style = MaterialTheme.typography.titleLarge)
-            OutlinedTextField(url, { url = it; error = null }, label = { Text("Адрес сервера") }, singleLine = true,
+            Text(strings(R.string.settings_activity_17), style = MaterialTheme.typography.titleLarge)
+            OutlinedTextField(url, { url = it; error = null }, label = { Text(strings(R.string.server_settings_activity_10)) }, singleLine = true,
                 enabled = !checking, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp))
-            OutlinedTextField(token, { token = it; error = null }, label = { Text("API-токен") }, singleLine = true,
+            OutlinedTextField(token, { token = it; error = null }, label = { Text(strings(R.string.account_activity_33)) }, singleLine = true,
                 enabled = !checking, visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), trailingIcon = {
                     IconButton(onClick = { reveal = !reveal }) { Icon(if (reveal) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                        if (reveal) "Скрыть токен" else "Показать токен") }
+                        if (reveal) strings(R.string.settings_activity_18) else strings(R.string.settings_activity_19)) }
                 }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
-            Text("Новое подключение сохранится после проверки. Воспроизведение при смене сервера остановится.",
+            Text(strings(R.string.settings_activity_20),
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
             if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
             Button(enabled = !checking, modifier = Modifier.fillMaxWidth().padding(top = 16.dp), onClick = {
-                val validation = validateServerUrl(url) ?: if (token.isBlank()) "Введи токен" else null
+                val validation = validateServerUrl(url) ?: if (token.isBlank()) strings(R.string.app_view_model_2) else null
                 if (validation != null) error = validation else {
                     checking = true; error = null
                     scope.launch {
@@ -164,13 +177,13 @@ private fun SettingsScreen(app: SirinApp, appearance: Appearance, onBack: () -> 
                             val draft = ServerConnection(url.trim().trimEnd('/'), token.trim(), app.settings.clientId)
                             MusikApi(draft).validateConnection()
                             app.playback.stop(); app.settings.setConnection(draft.baseUrl, draft.token)
-                            snack.showSnackbar("Подключение сохранено")
+                            snack.showSnackbar(strings(R.string.settings_activity_21))
                         } catch (e: CancellationException) { throw e }
-                        catch (e: Exception) { error = e.message ?: "Не удалось подключиться" }
+                        catch (e: Exception) { error = e.message ?: strings(R.string.settings_activity_22) }
                         finally { checking = false }
                     }
                 }
-            }) { Text(if (checking) "Проверяю…" else "Проверить и сохранить") }
+            }) { Text(if (checking) strings(R.string.settings_activity_23) else strings(R.string.settings_activity_24)) }
             }
             }
             }

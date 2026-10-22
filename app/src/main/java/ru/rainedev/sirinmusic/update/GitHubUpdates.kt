@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic.update
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
@@ -68,7 +70,7 @@ internal class GitHubUpdates(private val client: OkHttpClient = OkHttpClient.Bui
             .header("User-Agent", "SirinMusic/$installed").build()
         client.newCall(request).await().use { response ->
             if (response.code == 404) return@withContext null
-            if (response.code == 403 || response.code == 429) throw IOException("GitHub ограничил запросы. Попробуй позже.")
+            if (response.code == 403 || response.code == 429) throw IOException(strings(R.string.git_hub_updates_1))
             checkResponse(response)
             val text = response.body.string()
             withContext(Dispatchers.Default) { selectUpdate(json.decodeFromString<GitHubRelease>(text), installed) }
@@ -81,7 +83,7 @@ internal class GitHubUpdates(private val client: OkHttpClient = OkHttpClient.Bui
         client.newCall(request).await().use { response ->
             checkResponse(response)
             require(response.request.url.scheme == "https" && response.request.url.host in setOf(
-                "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")) { "Неизвестный адрес загрузки APK" }
+                "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")) { strings(R.string.git_hub_updates_2) }
             val digest = MessageDigest.getInstance("SHA-256")
             var total = 0L; var reported = -1
             partial.outputStream().use { output -> response.body.byteStream().use { input ->
@@ -91,19 +93,19 @@ internal class GitHubUpdates(private val client: OkHttpClient = OkHttpClient.Bui
                     val count = input.read(buffer)
                     if (count < 0) break
                     total += count
-                    require(total <= update.bytes && total <= MAX_APK_BYTES) { "Размер APK превышает ожидаемый" }
+                    require(total <= update.bytes && total <= MAX_APK_BYTES) { strings(R.string.git_hub_updates_3) }
                     output.write(buffer, 0, count); digest.update(buffer, 0, count)
                     val percent = (100 * total / update.bytes).toInt()
                     if (percent != reported) { reported = percent; onProgress(total.toFloat() / update.bytes) }
                 }
             } }
-            require(total == update.bytes) { "APK скачан не полностью" }
+            require(total == update.bytes) { strings(R.string.git_hub_updates_4) }
             val hash = digest.digest().joinToString("") { "%02x".format(it) }
-            require(hash == update.sha256) { "Контрольная сумма APK не совпадает" }
+            require(hash == update.sha256) { strings(R.string.git_hub_updates_5) }
         }
     }
     private fun checkResponse(response: Response) {
-        if (!response.isSuccessful) throw IOException("GitHub ответил ${response.code}")
+        if (!response.isSuccessful) throw IOException(strings(R.string.git_hub_updates_6, response.code))
     }
     private suspend fun Call.await(): Response = suspendCancellableCoroutine { continuation ->
         continuation.invokeOnCancellation { cancel() }

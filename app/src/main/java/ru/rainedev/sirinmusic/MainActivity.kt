@@ -1,5 +1,7 @@
 package ru.rainedev.sirinmusic
 
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -30,7 +32,7 @@ import ru.rainedev.sirinmusic.data.ConnectLink
 import ru.rainedev.sirinmusic.ui.*
 import ru.rainedev.sirinmusic.ui.theme.SirinMusicTheme
 
-class MainActivity : ComponentActivity() {
+class MainActivity : ru.rainedev.sirinmusic.SirinActivity() {
     // Same instance as viewModel() in SirinContent (same owner and default key).
     private val vm: AppViewModel by viewModels { AppViewModel.Factory(application as SirinApp) }
 
@@ -112,17 +114,17 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
     }
     LaunchedEffect(pendingLink) {
         if (pendingLink != null && vm.pendingLink.consume() != null) {
-            vm.showMessage("Уже подключено к серверу. Чтобы подключить другой, выйди в профиле.")
+            vm.showMessage(strings(R.string.main_activity_1))
         }
     }
     val context = androidx.compose.ui.platform.LocalContext.current
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route ?: "home"
-    val destinations = listOf(Destination("home", "Главная", Icons.Rounded.Home),
-        Destination("library", "Библиотека", Icons.Rounded.LibraryMusic),
-        Destination("playlists", "Плейлисты", Icons.AutoMirrored.Rounded.QueueMusic),
-        Destination("profile", "Профиль", Icons.Rounded.Person))
+    val destinations = listOf(Destination("home", strings(R.string.main_activity_2), Icons.Rounded.Home),
+        Destination("library", strings(R.string.main_activity_3), Icons.Rounded.LibraryMusic),
+        Destination("playlists", strings(R.string.main_activity_4), Icons.AutoMirrored.Rounded.QueueMusic),
+        Destination("profile", strings(R.string.main_activity_5), Icons.Rounded.Person))
     val isDetail = route == "now" || route == "lyrics" || route == "favorites" || route.startsWith("playlist/") || route.startsWith("pick/")
     var addTrackId by rememberSaveable { mutableStateOf<Long?>(null) }
     val snack = remember { SnackbarHostState() }
@@ -144,11 +146,11 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
         }
     }
     val title = when {
-        route == "now" -> "Сейчас играет"
-        route == "lyrics" -> "Текст песни"
-        route == "favorites" -> "Избранное"
-        route.startsWith("pick/") -> "Добавить треки"
-        route.startsWith("playlist/") -> "Плейлист"
+        route == "now" -> strings(R.string.main_activity_6)
+        route == "lyrics" -> strings(R.string.main_activity_7)
+        route == "favorites" -> strings(R.string.main_activity_8)
+        route.startsWith("pick/") -> strings(R.string.main_activity_9)
+        route.startsWith("playlist/") -> strings(R.string.main_activity_10)
         else -> destinations.firstOrNull { it.route == route }?.label ?: "Sirin Music"
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -162,10 +164,10 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
             }
             Scaffold(modifier = Modifier.weight(1f), snackbarHost = { SnackbarHost(snack) },
                 topBar = { TopAppBar(title = { Text(title) }, navigationIcon = {
-                    if (isDetail) IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Назад") }
+                    if (isDetail) IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, strings(R.string.about_activity_2)) }
                 }, actions = {
                     if (!isDetail) IconButton(onClick = { context.startActivity(Intent(context, SettingsActivity::class.java)) }) {
-                        Icon(Icons.Rounded.Settings, "Настройки")
+                        Icon(Icons.Rounded.Settings, strings(R.string.main_activity_11))
                     }
                 }) },
                 bottomBar = {
@@ -185,7 +187,11 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
                         HomeScreen(state.mixes, state.favorites, player.maturity, vm::artworkUrl,
                             { vm.playback.startRadio() }, { vm.playback.playMix(it) }, { vm.playback.playFavorite(it) }, padding,
                             onFavorites = { nav.navigate("favorites") }, onShare = vm::shareRadio,
-                            onRefreshMixes = vm::refreshServerMixes, refreshingMixes = "mix-refresh" in state.busy, sharing = "shares" in state.busy)
+                            onRefreshMixes = vm::refreshServerMixes, refreshingMixes = "mix-refresh" in state.busy, sharing = "shares" in state.busy,
+                            recommendations = state.favoriteRecommendations, recommendationsLoading = state.favoriteRecommendationsLoading,
+                            recommendationsError = state.favoriteRecommendationsError, onRefreshRecommendations = vm::loadFavoriteRecommendations,
+                            onRecommendationTrack = { vm.playback.playTrack(it) }, onRecommendationArtist = { vm.playback.playArtist(it) },
+                            onRecommendationAlbum = { artist, album -> vm.playback.playAlbum(artist, album) })
                     }
                     composable("library") {
                         LibraryScreen(state, player.ratings, player.ratingPending, player.sessionId != null, vm::artworkUrl, { vm.playback.playTrack(it) },
@@ -224,7 +230,8 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
                             { id, index -> if (player.fixed) vm.playback.jumpToIndex(index) else vm.playback.jumpTo(id) }, padding, onLike = vm.playback::like,
                             onLyrics = { nav.navigate("lyrics") }, onAddToPlaylist = { addTrackId = player.current?.key },
                             favoriteBusy = player.current?.let { "favorite:${it.key}" in state.busy } == true,
-                            onPrevious = { vm.playback.previous() })
+                            onPrevious = { vm.playback.previous() }, api = app.api,
+                            profileKey = vm.savedUrl + "|" + vm.savedToken)
                     }
                     composable("lyrics") { LyricsScreen(app.api, player, vm.playback::seekTo, padding) }
                     composable("profile") {
@@ -238,7 +245,7 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
                             onRestoreRule = vm::restoreRule, onCreateShare = { vm.createShare() },
                             onShare = { share ->
                                 try { shareRadioLink(context, share.url) }
-                                catch (e: Exception) { vm.showMessage("Не удалось открыть меню отправки ссылки") }
+                                catch (e: Exception) { vm.showMessage(strings(R.string.main_activity_12)) }
                             }, onRevokeShare = vm::revokeShare)
                     }
                 }
@@ -249,7 +256,7 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
     LaunchedEffect(state.shareToSend) {
         state.shareToSend?.let { share ->
             try { shareRadioLink(context, share.url) }
-            catch (e: Exception) { vm.showMessage("Не удалось открыть меню отправки ссылки") }
+            catch (e: Exception) { vm.showMessage(strings(R.string.main_activity_12)) }
             finally { vm.consumeShare() }
         }
     }

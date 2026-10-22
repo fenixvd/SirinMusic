@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import ru.rainedev.sirinmusic.data.Palette
 
-class PaletteContrastTest {
+class PaletteContrastTest : ru.rainedev.sirinmusic.LocalizedTest() {
     @Test fun arbitrarySeedsKeepTextReadableInBothThemes() {
         val seeds = Palette.entries.map { it.seed } + listOf(0xFF000000.toInt(), 0xFFFFFFFF.toInt(),
             0xFFFF0000.toInt(), 0xFF00FF00.toInt(), 0xFF0000FF.toInt())

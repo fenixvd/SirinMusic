@@ -1,5 +1,8 @@
 package ru.rainedev.sirinmusic.ui
 
+import ru.rainedev.sirinmusic.trackCount
+import ru.rainedev.sirinmusic.R
+import ru.rainedev.sirinmusic.strings
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -33,62 +36,62 @@ fun ProfileScreen(
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
             Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Rounded.Radio, null)
-                Text("Твой музыкальный вкус", style = MaterialTheme.typography.headlineSmall)
+                Text(strings(R.string.profile_screen_1), style = MaterialTheme.typography.headlineSmall)
                 val currentMaturity = profile?.maturity ?: maturity
                 Text(when (currentMaturity) {
-                    "ready" -> "Радио знает твой вкус"
-                    "forming" -> "Вкус обретает форму"
-                    "discovering" -> "Радио знакомится с тобой"
-                    else -> "Слушай и отмечай любимую музыку"
+                    "ready" -> strings(R.string.home_screen_2)
+                    "forming" -> strings(R.string.profile_screen_2)
+                    "discovering" -> strings(R.string.profile_screen_3)
+                    else -> strings(R.string.profile_screen_4)
                 }, style = MaterialTheme.typography.titleMedium)
-                Text("Лайки и дослушивания помогают радио выбирать музыку для тебя.",
+                Text(strings(R.string.profile_screen_5),
                     style = MaterialTheme.typography.bodyMedium)
             }
         }
         if (state.profileLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
         ProfileError(state, "taste")
-        Text("Твой вкус", style = MaterialTheme.typography.titleLarge)
+        Text(strings(R.string.profile_screen_6), style = MaterialTheme.typography.titleLarge)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            profile?.likes?.let { ProfileStat("Лайков", it) }
-            profile?.skips?.let { ProfileStat("Пропусков", it) }
-            profile?.plays?.let { ProfileStat("Прослушано", it) }
-            ProfileStat("В избранном", favorites)
+            profile?.likes?.let { ProfileStat(strings(R.string.profile_screen_7), it) }
+            profile?.skips?.let { ProfileStat(strings(R.string.profile_details_16), it) }
+            profile?.plays?.let { ProfileStat(strings(R.string.profile_screen_8), it) }
+            ProfileStat(strings(R.string.profile_screen_9), favorites)
         }
         FilledTonalButton(onClick = onFavorites, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Rounded.Favorite, null); Spacer(Modifier.width(8.dp)); Text("Открыть избранное")
+            Icon(Icons.Rounded.Favorite, null); Spacer(Modifier.width(8.dp)); Text(strings(R.string.profile_screen_10))
         }
         OutlinedButton(onClick = { context.startActivity(android.content.Intent(context, ru.rainedev.sirinmusic.AccountActivity::class.java)) }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Rounded.ManageAccounts, null); Spacer(Modifier.width(8.dp)); Text("Аккаунт и профили")
+            Icon(Icons.Rounded.ManageAccounts, null); Spacer(Modifier.width(8.dp)); Text(strings(R.string.account_activity_4))
         }
         OutlinedButton(onClick = { context.startActivity(android.content.Intent(context, ru.rainedev.sirinmusic.ServerSettingsActivity::class.java)) }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Rounded.Dns, null); Spacer(Modifier.width(8.dp)); Text("Настройки сервера")
+            Icon(Icons.Rounded.Dns, null); Spacer(Modifier.width(8.dp)); Text(strings(R.string.server_settings_activity_5))
         }
         ProfileDetails(state, contextIds, hasSession, onExplore, onCreateContext, onToggleContext,
             onDeleteContext, onRestoreRule, onCreateShare, onShare, onRevokeShare)
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
             Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Rounded.Dns, null); Text("Музыкальный сервер", style = MaterialTheme.typography.titleMedium)
+                    Icon(Icons.Rounded.Dns, null); Text(strings(R.string.profile_screen_11), style = MaterialTheme.typography.titleMedium)
                 }
                 Text(serverUrl, style = MaterialTheme.typography.bodyMedium)
-                Text("${serverTracks} треков · версия ${serverVersion ?: "не указана"}",
+                Text(strings(R.string.profile_screen_13, trackCount(serverTracks), serverVersion ?: strings(R.string.profile_screen_12)),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         OutlinedButton(onClick = onRefresh, enabled = !state.profileLoading, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Rounded.Refresh, null); Spacer(Modifier.width(8.dp))
-            Text("Обновить данные")
+            Text(strings(R.string.profile_screen_14))
         }
         TextButton(onClick = { confirmLogout = true }, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.AutoMirrored.Rounded.ExitToApp, null, tint = MaterialTheme.colorScheme.error)
-            Spacer(Modifier.width(8.dp)); Text("Выйти из профиля", color = MaterialTheme.colorScheme.error)
+            Spacer(Modifier.width(8.dp)); Text(strings(R.string.profile_screen_15), color = MaterialTheme.colorScheme.error)
         }
     }
     if (confirmLogout) AlertDialog(onDismissRequest = { confirmLogout = false },
-        title = { Text("Выйти из профиля?") },
-        text = { Text("Воспроизведение остановится, а сохранённый токен будет удалён. Избранное и история останутся на сервере.") },
-        confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }) { Text("Выйти") } },
-        dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("Отмена") } })
+        title = { Text(strings(R.string.profile_screen_16)) },
+        text = { Text(strings(R.string.profile_screen_17)) },
+        confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }) { Text(strings(R.string.profile_screen_18)) } },
+        dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text(strings(R.string.account_activity_71)) } })
 }
 
 @Composable

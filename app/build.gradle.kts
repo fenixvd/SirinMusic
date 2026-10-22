@@ -17,11 +17,14 @@ android {
         applicationId = "ru.rainedev.sirinmusic"
         minSdk = 27
         targetSdk = 36
-        versionCode = 5
-        versionName = "2.0.2"
+        versionCode = 6
+        versionName = "2.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+
+    // Language changes work offline, including in APKs generated from an app bundle.
+    bundle { language { enableSplit = false } }
 
     // F-Droid rejects the encrypted Google Play dependency metadata block.
     dependenciesInfo {

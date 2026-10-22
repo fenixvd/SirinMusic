@@ -17,6 +17,7 @@ class SirinApp : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        TextResources.install(this)
         updates.schedule()
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             updates.cleanOldDownloads()
