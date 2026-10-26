@@ -1,1 +1,2 @@
 Playback controls and the seek bar stay fixed at the bottom of the player. Track details, passport and queue scroll separately without pushing controls off screen.
+Added a privacy policy link in the app language.

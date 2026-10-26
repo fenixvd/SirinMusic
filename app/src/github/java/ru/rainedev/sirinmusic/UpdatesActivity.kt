@@ -28,7 +28,7 @@ class UpdatesActivity : ru.rainedev.sirinmusic.SirinActivity() {
         super.onCreate(savedInstanceState); enableEdgeToEdge()
         val app = application as SirinApp
         if (savedInstanceState == null && intent.getBooleanExtra("check_updates", false)) {
-            lifecycleScope.launch { app.updates.check(notify = true) }
+            lifecycleScope.launch { app.updates.manager.check(notify = true) }
         }
         setContent {
             val appearance by app.settings.appearance.collectAsStateWithLifecycle()

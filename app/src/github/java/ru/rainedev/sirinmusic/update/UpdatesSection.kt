@@ -26,7 +26,7 @@ import ru.rainedev.sirinmusic.SirinApp
 
 @Composable
 internal fun UpdatesSection(app: SirinApp) {
-    val state by app.updates.state.collectAsStateWithLifecycle()
+    val state by app.updates.manager.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var installHint by remember { mutableStateOf<String?>(null) }
@@ -34,7 +34,7 @@ internal fun UpdatesSection(app: SirinApp) {
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         permissionGranted = it
-        if (it) app.updates.notifyAvailable()
+        if (it) app.updates.manager.notifyAvailable()
     }
     fun launchInstaller(file: File) {
         try {
@@ -45,7 +45,7 @@ internal fun UpdatesSection(app: SirinApp) {
         } catch (_: Exception) { installHint = strings(R.string.updates_section_1) }
     }
     val installPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        val file = app.updates.state.value.ready
+        val file = app.updates.manager.state.value.ready
         if (context.packageManager.canRequestPackageInstalls() && file?.exists() == true) launchInstaller(file)
         else installHint = strings(R.string.updates_section_2)
     }
@@ -62,16 +62,16 @@ internal fun UpdatesSection(app: SirinApp) {
             style = MaterialTheme.typography.bodySmall)
         ListItem(headlineContent = { Text(strings(R.string.updates_section_6)) }, supportingContent = {
             Text(strings(R.string.updates_section_7))
-        }, trailingContent = { Checkbox(state.onLaunch, onCheckedChange = app.updates::setOnLaunch) })
+        }, trailingContent = { Checkbox(state.onLaunch, onCheckedChange = app.updates.manager::setOnLaunch) })
         ListItem(headlineContent = { Text(strings(R.string.updates_section_8)) }, supportingContent = {
             Text(strings(R.string.updates_section_9))
-        }, trailingContent = { Switch(state.automatic, onCheckedChange = app.updates::setAutomatic) })
+        }, trailingContent = { Switch(state.automatic, onCheckedChange = app.updates.manager::setAutomatic) })
         if ((state.automatic || state.onLaunch) && !permissionGranted && Build.VERSION.SDK_INT >= 33) {
             TextButton(onClick = { notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text(strings(R.string.updates_section_10)) }
         }
         OutlinedButton(enabled = !state.checking && !state.downloading, onClick = {
             installHint = null
-            scope.launch { app.updates.check(notify = true) }
+            scope.launch { app.updates.manager.check(notify = true) }
         }) { Text(if (state.checking) strings(R.string.settings_activity_23) else strings(R.string.updates_section_11)) }
         if (state.checking) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (state.available == null && state.checkedAt > 0 && !state.checking && state.error == null) {
@@ -86,7 +86,7 @@ internal fun UpdatesSection(app: SirinApp) {
             }
             Button(enabled = !state.downloading && !state.checking, onClick = {
                 scope.launch {
-                    val file = state.ready?.takeIf { it.exists() } ?: app.updates.download()
+                    val file = state.ready?.takeIf { it.exists() } ?: app.updates.manager.download()
                     if (file != null) install(file)
                 }
             }) { Text(if (state.ready?.exists() == true) strings(R.string.updates_section_16) else strings(R.string.updates_section_17)) }

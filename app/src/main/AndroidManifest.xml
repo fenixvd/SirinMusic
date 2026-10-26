@@ -9,7 +9,6 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:localeConfig="@xml/locales_config"
@@ -46,15 +45,7 @@
         <activity android:name=".ServerSettingsActivity" android:exported="false" />
         <activity android:name=".ui.qr.QrScanActivity" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
-        <activity android:name=".UpdatesActivity" android:exported="false" />
         <activity android:name=".AboutActivity" android:exported="false" />
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.updates"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_paths" />
-        </provider>
         <service
             android:name=".playback.PlaybackService"
             android:exported="false"

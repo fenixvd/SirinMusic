@@ -3,6 +3,8 @@ package ru.rainedev.sirinmusic
 import ru.rainedev.sirinmusic.R
 import ru.rainedev.sirinmusic.strings
 import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -48,6 +50,9 @@ class AboutActivity : ru.rainedev.sirinmusic.SirinActivity() {
                         Text("RaineDev", style = MaterialTheme.typography.titleLarge)
                         Text(strings(R.string.about_activity_4),
                             modifier = Modifier.padding(top = 12.dp))
+                        TextButton(onClick = {
+                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(strings(R.string.privacy_policy_url))))
+                        }) { Text(strings(R.string.privacy_policy)) }
                         Text(strings(R.string.about_activity_5),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 24.dp))
                     }

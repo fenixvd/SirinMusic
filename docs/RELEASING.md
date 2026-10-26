@@ -62,7 +62,7 @@ base64 -w 0 /secure/path/sirin-release.jks | gh secret set SIRIN_KEYSTORE_BASE64
 Подписанная сборка использует переменные `SIRIN_KEYSTORE_PATH`, `SIRIN_KEYSTORE_PASSWORD`, `SIRIN_KEY_ALIAS` и `SIRIN_KEY_PASSWORD`. Они задаются в окружении. Пароли не записываются в исходники и историю команд.
 
 ```sh
-./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :app:bundleRelease
+./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
 "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose \
   app/build/outputs/apk/release/app-release.apk
 ```
@@ -83,7 +83,7 @@ git push origin v2.1.1
 
 Дальше Actions выполняет тесты и lint, собирает APK, проверяет подпись и публикует APK вместе с `SHA256SUMS.txt` в GitHub Release.
 
-Для Google Play AAB можно собрать локально задачей `:app:bundleRelease` с теми же переменными подписи. Файл появится в `app/build/outputs/bundle/release/app-release.aab`; он не добавляется в Git и GitHub Release. Сертификат ключа должен совпадать с сертификатом ключа загрузки приложения в Play Console. Код версии 2.1.1 — `8`; ранее загруженные версии должны иметь меньший код.
+Для Google Play AAB можно собрать локально командой `./gradlew -PplayStore=true :app:bundleRelease` с теми же переменными подписи. В этой сборке исключены модуль GitHub-обновлений, экран обновлений, установщик APK и разрешение `REQUEST_INSTALL_PACKAGES`. Обычная сборка без `-PplayStore=true` сохраняет обновления через GitHub. Файл появится в `app/build/outputs/bundle/release/app-release.aab`; он не добавляется в Git и GitHub Release. Сертификат ключа должен совпадать с сертификатом ключа загрузки приложения в Play Console. Код версии 2.1.1 — `8`; ранее загруженные версии должны иметь меньший код.
 
 Обычный тег создаёт стабильный релиз. Тег с суффиксом, например `v2.1.1-rc.1`, создаёт предварительный релиз; суффикс также входит в `versionName` исходников. Workflow можно запустить вручную для уже существующего тега. Повторный запуск заменяет вложения этого релиза APK той же версии. Опубликованные теги сохраняют свой исходный коммит.
 

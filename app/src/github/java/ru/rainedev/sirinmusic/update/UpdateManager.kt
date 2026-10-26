@@ -160,7 +160,7 @@ internal class UpdateManager(private val context: Context) {
 @androidx.annotation.Keep
 class UpdateWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
-        val manager = (applicationContext as ru.rainedev.sirinmusic.SirinApp).updates
+        val manager = (applicationContext as ru.rainedev.sirinmusic.SirinApp).updates.manager
         if (!manager.state.value.automatic) return Result.success()
         return if (manager.check(notify = true)) Result.success() else if (runAttemptCount < 3) Result.retry() else Result.failure()
     }

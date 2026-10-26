@@ -482,4 +482,6 @@
     <string name="language_summary">Follow the system language or choose one for Sirin Music.</string>
     <plurals name="track_count"><item quantity="one">%1$d track</item><item quantity="other">%1$d tracks</item></plurals>
     <plurals name="day_count"><item quantity="one">%1$d day</item><item quantity="other">%1$d days</item></plurals>
+    <string name="privacy_policy">Privacy policy</string>
+    <string name="privacy_policy_url">https://rainedev.ru/en/sirin/privacy/</string>
 </resources>

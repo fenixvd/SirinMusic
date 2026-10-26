@@ -1,6 +1,5 @@
 package ru.rainedev.sirinmusic
 
-import kotlinx.coroutines.launch
 import okio.Path.Companion.toPath
 import android.app.Application
 import coil3.ImageLoader
@@ -13,15 +12,12 @@ import ru.rainedev.sirinmusic.playback.PlaybackController
 
 class SirinApp : Application(), SingletonImageLoader.Factory {
 
-    internal val updates by lazy { ru.rainedev.sirinmusic.update.UpdateManager(this) }
+    internal val updates by lazy { AppUpdates(this) }
 
     override fun onCreate() {
         super.onCreate()
         TextResources.install(this)
-        updates.schedule()
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-            updates.cleanOldDownloads()
-        }
+        updates.initialize()
     }
 
     val imageCache by lazy { ru.rainedev.sirinmusic.data.ImageCache(this) }

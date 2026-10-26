@@ -4,6 +4,9 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Default APKs retain GitHub updates; -PplayStore=true excludes the updater entirely.
+val playStore = providers.gradleProperty("playStore").map { it.toBooleanStrict() }.orElse(false).get()
+
 android {
     namespace = "ru.rainedev.sirinmusic"
     buildToolsVersion = "37.0.0"
@@ -21,6 +24,18 @@ android {
         versionName = "2.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    sourceSets {
+        getByName("main") {
+            kotlin.directories.add(if (playStore) "src/play/java" else "src/github/java")
+            if (!playStore) res.directories.add("src/github/res")
+        }
+        if (!playStore) {
+            getByName("debug").manifest.srcFile("src/github/AndroidManifest.xml")
+            getByName("release").manifest.srcFile("src/github/AndroidManifest.xml")
+            getByName("test").kotlin.directories.add("src/githubTest/java")
+        }
     }
 
     // Language changes work offline, including in APKs generated from an app bundle.

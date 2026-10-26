@@ -31,7 +31,7 @@ fun SettingsMenu(
         }
         SettingsMenuItem(strings(R.string.account_activity_4), strings(R.string.settings_navigation_5), Icons.Rounded.ManageAccounts) { onAccount() }
         SettingsMenuItem(strings(R.string.server_settings_activity_5), strings(R.string.settings_navigation_6), Icons.Rounded.Dns) { onServer() }
-        SettingsMenuItem(strings(R.string.updates_activity_1), strings(R.string.settings_navigation_7), Icons.Rounded.SystemUpdate) { onUpdates() }
+        if (ru.rainedev.sirinmusic.AppUpdates.available) SettingsMenuItem(strings(R.string.updates_activity_1), strings(R.string.settings_navigation_7), Icons.Rounded.SystemUpdate) { onUpdates() }
         SettingsMenuItem(strings(R.string.about_activity_1), strings(R.string.settings_navigation_8), Icons.Rounded.Info) { onAbout() }
     }
 }

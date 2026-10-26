@@ -86,8 +86,7 @@ private fun SettingsScreen(app: SirinApp, appearance: Appearance, onBack: () -> 
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) },
                         onServer = { app.startActivity(android.content.Intent(app, ServerSettingsActivity::class.java)
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) },
-                        onUpdates = { app.startActivity(android.content.Intent(app, UpdatesActivity::class.java)
-                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) },
+                        onUpdates = app.updates::openSettings,
                         onAbout = { app.startActivity(android.content.Intent(app, AboutActivity::class.java)
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) })
                 }
