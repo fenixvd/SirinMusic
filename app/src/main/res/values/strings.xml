@@ -484,4 +484,29 @@
     <plurals name="day_count"><item quantity="one">%1$d day</item><item quantity="other">%1$d days</item></plurals>
     <string name="privacy_policy">Privacy policy</string>
     <string name="privacy_policy_url">https://rainedev.ru/en/sirin/privacy/</string>
+    <string name="track_passport_title">Track details</string>
+    <string name="track_passport_close">Close</string>
+    <string name="track_passport_empty">No track details available</string>
+    <string name="track_passport_error">Could not load track details</string>
+    <string name="track_passport_retry">Retry</string>
+    <string name="track_share_title">Share track</string>
+    <string name="track_share_text">Title, artist and album</string>
+    <string name="track_share_image">Share image</string>
+    <string name="track_share_listening">Now listening</string>
+    <string name="track_share_error">Could not share this track. Please try again.</string>
+    <string name="track_share_link">Listening link</string>
+    <string name="track_share_link_soon">Coming soon, probably...</string>
+    <string name="about_easter_1">What are you hoping to find here?</string>
+    <string name="about_easter_2">The secret make-it-pretty button is still out of stock.</string>
+    <string name="about_easter_3">Developer mode? Nope, just a toast.</string>
+    <string name="about_easter_4">Five more taps and nothing happens. Probably.</string>
+    <string name="about_easter_5">Five taps received. Request for magic denied.</string>
+    <string name="about_easter_6">A secret track could have been hiding here.</string>
+    <string name="about_easter_7">You are in the queue. There are 404 people ahead of you.</string>
+    <string name="about_easter_8">Congratulations! You unlocked another toast.</string>
+    <string name="about_credits_title">Acknowledgements</string>
+    <string name="about_musik_thanks">Thanks to the developer of musik for the open-source music server and smart radio.</string>
+    <string name="about_musik_link">musik on GitHub</string>
+    <string name="privacy_policy_open_failed">Could not open the browser. Visit https://rainedev.ru/en/sirin/privacy/</string>
+    <string name="browser_open_failed">No app is available to open this link.</string>
 </resources>

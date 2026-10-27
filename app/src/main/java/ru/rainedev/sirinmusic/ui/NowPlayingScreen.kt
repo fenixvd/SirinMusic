@@ -2,6 +2,11 @@ package ru.rainedev.sirinmusic.ui
 
 import ru.rainedev.sirinmusic.R
 import ru.rainedev.sirinmusic.strings
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -14,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -25,6 +31,7 @@ import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.ThumbDown
 import androidx.compose.material.icons.rounded.ThumbUp
+import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.FilledIconButton
@@ -33,12 +40,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import ru.rainedev.sirinmusic.playback.PlayerUi
 
 @Composable
@@ -57,8 +66,6 @@ fun NowPlayingScreen(
     onAddToPlaylist: () -> Unit,
     favoriteBusy: Boolean,
     onPrevious: () -> Unit,
-    api: ru.rainedev.sirinmusic.data.MusikApi,
-    profileKey: String,
 ) {
     val track = ui.current
     val information: @Composable () -> Unit = {
@@ -66,7 +73,16 @@ fun NowPlayingScreen(
             Modifier.fillMaxWidth().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            BoxWithConstraints { Artwork(artworkUrl(track?.artworkPath, 640), maxWidth.coerceAtMost(320.dp), corner = 20.dp) }
+            BoxWithConstraints {
+                SwipeableArtwork(
+                    url = artworkUrl(track?.artworkPath, 640),
+                    size = maxWidth.coerceAtMost(320.dp),
+                    trackKey = track?.key,
+                    enabled = track != null && !ui.busy,
+                    onNext = onSkip,
+                    onPrevious = onPrevious,
+                )
+            }
 
             Text(
                 track?.title ?: strings(R.string.lyrics_screen_2),
@@ -93,22 +109,12 @@ fun NowPlayingScreen(
                 )
             }
 
-            TrackPassportCard(api, track?.key, profileKey)
-
-            if (ui.error != null) {
-                Text(
-                    ui.error,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-            }
         }
     }
     // Measured outside the scrolling content, so metadata cannot displace playback actions.
     val controls: @Composable () -> Unit = {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Slider(
@@ -122,7 +128,7 @@ fun NowPlayingScreen(
                 Text(formatTime(ui.durationSec), style = MaterialTheme.typography.bodySmall)
             }
 
-            Box(Modifier.fillMaxWidth().height(16.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxWidth().height(8.dp), contentAlignment = Alignment.Center) {
                 if (ui.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
             Row(verticalAlignment = Alignment.CenterVertically,
@@ -186,4 +192,35 @@ fun NowPlayingScreen(
             }
         }
     }
+}
+
+@Composable
+internal fun TrackPassportPopup(
+    track: ru.rainedev.sirinmusic.data.Track,
+    api: ru.rainedev.sirinmusic.data.MusikApi,
+    profileKey: String,
+    onDismiss: () -> Unit,
+) {
+        Popup(
+            onDismissRequest = onDismiss,
+            properties = PopupProperties(focusable = true),
+        ) {
+            // One dismiss target over the whole player: taps on the card and scrim close it
+            // without passing the same tap through to playback controls underneath.
+            Box(Modifier.fillMaxSize()
+                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
+                .clickable(onClickLabel = strings(R.string.track_passport_close)) { onDismiss() }
+                .padding(24.dp), contentAlignment = Alignment.Center) {
+                Surface(modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth(),
+                    shape = MaterialTheme.shapes.extraLarge, tonalElevation = 6.dp) {
+                    Column(Modifier.padding(24.dp)) {
+                        Text(strings(R.string.track_passport_title), style = MaterialTheme.typography.headlineSmall)
+                        Column(Modifier.padding(top = 16.dp).heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                            Text(track.title ?: "—", style = MaterialTheme.typography.titleMedium)
+                            TrackPassportCard(api, track.key, profileKey, interactive = false)
+                        }
+                    }
+                }
+            }
+        }
 }

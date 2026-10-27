@@ -230,6 +230,7 @@ fun LoginScreen(
             enabled = !checking && url.isNotBlank()) {
             Text(strings(R.string.login_screen_14))
         }
+        PrivacyPolicyLink(Modifier.padding(top = 12.dp))
     }
     }
 }

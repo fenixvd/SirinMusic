@@ -16,7 +16,7 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
+        android:label="${appLabel}"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:name=".SirinApp"
         android:usesCleartextTraffic="true"
@@ -46,6 +46,13 @@
         <activity android:name=".ui.qr.QrScanActivity" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".AboutActivity" android:exported="false" />
+        <provider
+            android:name=".sharing.TrackShareProvider"
+            android:authorities="${applicationId}.trackshare"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/track_share_paths" />
+        </provider>
         <service
             android:name=".playback.PlaybackService"
             android:exported="false"

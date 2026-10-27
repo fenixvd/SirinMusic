@@ -35,6 +35,17 @@ class MusikApiTest : ru.rainedev.sirinmusic.LocalizedTest() {
     }
     @After fun stop() { server.stop(0); api.client.connectionPool.evictAll(); api.client.dispatcher.executorService.shutdown() }
 
+    @Test fun refreshingLibraryFetchesNewServerTracksWithTheSameApiInstance() = runBlocking {
+        body = """[{"id":1,"title":"Existing"}]"""
+        assertEquals(listOf(1L), api.library().map { it.key })
+        body = """[{"id":1,"title":"Existing"},{"id":2,"title":"New upload"}]"""
+        assertEquals(listOf(1L, 2L), api.library().map { it.key })
+        repeat(2) {
+            assertEquals("/api/library", requests.take().second)
+            assertEquals("Bearer fixture-token", authorization.take())
+        }
+    }
+
     @Test fun trackPassportUsesAuthenticatedDetailRouteAndDecodesMeasuredAndProfileData() = runBlocking {
         body = """{"id":42,"passport":{"format":"MP3","bitrate":320000,"sample_rate":44100,"channels":2,"lufs":-11.3,"bpm":86.0,"key":"D","mode":"minor","year":2009,"duration":190,"genres":["Rock","Alternative"],"plays":2,"early_skips":1,"last_played_at":"2026-10-18T10:00:00Z"}}"""
         val detail = api.trackDetails(42)

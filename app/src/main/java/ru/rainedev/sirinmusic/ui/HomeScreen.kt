@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -36,6 +37,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,6 +47,7 @@ import ru.rainedev.sirinmusic.data.Mix
 import ru.rainedev.sirinmusic.data.Track
 import ru.rainedev.sirinmusic.data.FavoriteRecommendations
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     mixes: List<Mix>,
@@ -63,8 +67,13 @@ fun HomeScreen(
     onRecommendationTrack: (Long) -> Unit,
     onRecommendationArtist: (String) -> Unit,
     onRecommendationAlbum: (String, String) -> Unit,
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
 ) {
-    LazyVerticalGrid(columns = GridCells.Adaptive(360.dp), contentPadding = contentPadding) {
+    PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh,
+        modifier = Modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding())) {
+    LazyVerticalGrid(columns = GridCells.Adaptive(360.dp), modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding())) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Card(modifier = Modifier.fillMaxWidth().padding(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
@@ -183,6 +192,7 @@ fun HomeScreen(
                 )
             }
         }
+    }
     }
 }
 

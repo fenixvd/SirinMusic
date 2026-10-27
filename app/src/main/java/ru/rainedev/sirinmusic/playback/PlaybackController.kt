@@ -244,6 +244,10 @@ class PlaybackController(
 
     // ---- управление ----
 
+    fun dismissError(message: String) {
+        _ui.update { if (it.error == message) it.copy(error = null) else it }
+    }
+
     fun togglePlay() = setPlaying(!player.playWhenReady)
 
     fun setPlaying(playing: Boolean) {
@@ -276,7 +280,8 @@ class PlaybackController(
         val session = snapshot.sessionId ?: return@launch
         if (snapshot.busy) return@launch
         val requestGeneration = generation
-        val startTicket = startGate.requestPlay()
+        // Navigation preserves play/pause intent, including a pause while /previous is pending.
+        val startTicket = startGate.ticket
         _ui.update { it.copy(busy = true, error = null) }
         try {
             val reply = api.previous(session)

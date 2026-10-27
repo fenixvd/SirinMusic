@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,6 +67,25 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
     val pendingPlayerNavigation = PendingPlayerNavigation()
     private val favoritesMutex = Mutex()
     private val jobs = TaskJobs(viewModelScope)
+    private var catalogTrackCount: Int? = null
+    private val contentRefresh = ContentRefresh(
+        scope = viewModelScope,
+        now = { android.os.SystemClock.elapsedRealtime() },
+        onLoading = { loading -> _state.update { it.copy(libraryLoading = loading) } },
+        onError = { e -> _state.update { it.copy(message = e.message ?: strings(R.string.account_activity_2)) } },
+        fetch = {
+            // Read the count first: an import finishing mid-fetch is detected on the next check.
+            val health = api.health()
+            val tracks = api.library()
+            val artists = api.artists()
+            val albums = api.albums()
+            currentCoroutineContext().ensureActive()
+            catalogTrackCount = health.tracks
+            _state.update { it.copy(tracks = tracks, artists = artists.artists, albums = albums.albums,
+                serverTracks = health.tracks, serverVersion = health.version) }
+            loadArtistPhotos(); loadMixes(); loadFavorites(); loadPlaylists()
+        },
+    )
     private var connection = settings.baseUrl to settings.token
     private var selectedPlaylistId: Long? = null
     private var favoriteRecommendationsRequest = 0
@@ -93,7 +114,11 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
         }
     }
 
-    private fun cancelTasks() = jobs.cancelAll()
+    private fun cancelTasks() {
+        jobs.cancelAll()
+        contentRefresh.reset()
+        catalogTrackCount = null
+    }
 
     fun refreshPausedPlayback() {
         if (settings.isConfigured) playback.restoreIfIdle(refreshPaused = true)
@@ -202,7 +227,22 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
 
     fun dismissMessage() { _state.update { it.copy(message = null) } }
     fun showMessage(text: String) { _state.update { it.copy(message = text) } }
-    fun refreshAll() { playback.restoreIfIdle(); loadArtistPhotos(); loadMixes(); loadLibrary(); loadProfile(); loadFavorites(); loadPlaylists() }
+    fun refreshAll() { playback.restoreIfIdle(); refreshContent(); loadProfile() }
+
+    /** Refresh the server catalogue without changing the active playback session or queue. */
+    fun refreshContent(force: Boolean = true) {
+        if (settings.isConfigured) contentRefresh.request(force)
+    }
+
+    /** Cheap foreground probe; a periodic full fetch also catches edits with an unchanged count. */
+    fun checkLibraryChanges() = task("catalog-check") {
+        if (!settings.isConfigured) return@task
+        try {
+            val health = api.health()
+            if (health.tracks != catalogTrackCount || contentRefresh.isOlderThan(5 * 60_000)) refreshContent()
+        } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { /* A background probe must not replace usable content with an error. */ }
+    }
     fun loadArtistPhotos() = task("artistPhotos") {
         try {
             val photos = api.artistPhotos().photos.filterValues { path ->
@@ -216,13 +256,7 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
         } catch (_: Exception) { /* Covers remain available when photos cannot be loaded. */ }
     }
     fun loadMixes() = task("mixes") { val r = api.mixes(); _state.update { it.copy(mixes = r.mixes, hint = r.hint) } }
-    fun loadLibrary() = task("library") {
-        _state.update { it.copy(libraryLoading = true) }
-        try {
-            val tracks = api.library(); val artists = api.artists(); val albums = api.albums()
-            _state.update { it.copy(tracks = tracks, artists = artists.artists, albums = albums.albums) }
-        } finally { _state.update { it.copy(libraryLoading = false) } }
-    }
+    fun loadLibrary() = refreshContent()
     fun loadProfile() = task("profile") {
         refreshProfileDetails()
         val h = api.health()

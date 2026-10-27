@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -21,12 +22,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(state: AppState, ratings: Map<Long, String>, ratingPending: Set<Long>, hasSession: Boolean, artworkUrl: (String?, Int) -> String?,
     onTrack: (Long) -> Unit, onArtist: (String) -> Unit, onAlbum: (String, String) -> Unit,
     onFavorite: (Long) -> Unit, onArtistFavorite: (String) -> Unit, onAlbumFavorite: (String, String) -> Unit,
     onRate: (Long, String) -> Unit, onAddToPlaylist: (Long) -> Unit, contentPadding: PaddingValues,
-    favoritesOnly: Boolean = false, selectionMode: Boolean = false, onFavoriteTrack: (Long) -> Unit = onTrack) {
+    favoritesOnly: Boolean = false, selectionMode: Boolean = false, onFavoriteTrack: (Long) -> Unit = onTrack,
+    onRefresh: () -> Unit) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var query by rememberSaveable { mutableStateOf("") }
     var favoritesFilter by rememberSaveable { mutableStateOf(favoritesOnly) }
@@ -55,7 +58,9 @@ fun LibraryScreen(state: AppState, ratings: Map<Long, String>, ratingPending: Se
                 item.album.contains(q, ignoreCase = true) || item.artist.contains(q, ignoreCase = true) } }
         }
     }
-    Column(Modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding())) {
+    PullToRefreshBox(isRefreshing = state.libraryLoading, onRefresh = onRefresh,
+        modifier = Modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding())) {
+    Column(Modifier.fillMaxSize()) {
         OutlinedTextField(value = query, onValueChange = { query = it }, label = { Text(strings(R.string.library_screen_1)) },
             singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
         if (!favoritesOnly) FilterChip(selected = favoritesFilter, onClick = { favoritesFilter = !favoritesFilter },
@@ -91,6 +96,7 @@ fun LibraryScreen(state: AppState, ratings: Map<Long, String>, ratingPending: Se
                 }
             }
         }
+    }
     }
 }
 
