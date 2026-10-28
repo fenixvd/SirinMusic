@@ -30,11 +30,11 @@ class Settings(context: Context) : ConnectionSettings {
 
     override var baseUrl: String
         get() = prefs.getString(KEY_URL, "").orEmpty()
-        set(value) = prefs.edit().putString(KEY_URL, value.trim().trimEnd('/')).apply()
+        set(value) = synchronized(prefs) { prefs.edit().putString(KEY_URL, value.trim().trimEnd('/')).apply() }
 
     override var token: String
         get() = prefs.getString(KEY_TOKEN, "").orEmpty()
-        set(value) = prefs.edit().putString(KEY_TOKEN, value.trim()).putBoolean(KEY_AUTH_DISABLED, false).apply()
+        set(value) = synchronized(prefs) { prefs.edit().putString(KEY_TOKEN, value.trim()).putBoolean(KEY_AUTH_DISABLED, false).apply() }
 
     private val appearancePrefs = context.getSharedPreferences("sirin_appearance", Context.MODE_PRIVATE)
     private val _appearance = MutableStateFlow(Appearance(
@@ -51,19 +51,28 @@ class Settings(context: Context) : ConnectionSettings {
         _appearance.value = value
     }
 
-    fun setConnection(url: String, apiToken: String, authDisabled: Boolean = false) {
+    fun setConnection(url: String, apiToken: String, authDisabled: Boolean = false) = synchronized(prefs) {
         prefs.edit().putString(KEY_URL, url.trim().trimEnd('/')).putString(KEY_TOKEN, apiToken.trim()).putBoolean(KEY_AUTH_DISABLED, authDisabled).apply()
     }
 
     /** Один и тот же id во всех событиях — по нему сервер отличает устройства. */
     override val clientId: String
-        get() = prefs.getString(KEY_CLIENT, null) ?: java.util.UUID.randomUUID().toString().also {
-            prefs.edit().putString(KEY_CLIENT, it).apply()
+        get() = synchronized(prefs) {
+            prefs.getString(KEY_CLIENT, null) ?: java.util.UUID.randomUUID().toString().also {
+                prefs.edit().putString(KEY_CLIENT, it).apply()
+            }
         }
+
+    override fun snapshot(): ServerConnection = synchronized(prefs) {
+        // All connection mutations share this lock, including individual URL/token setters.
+        val values = prefs.all
+        ServerConnection(values[KEY_URL] as? String ?: "", values[KEY_TOKEN] as? String ?: "",
+            values[KEY_CLIENT] as? String ?: clientId)
+    }
 
     val isConfigured: Boolean get() = baseUrl.isNotEmpty() && (token.isNotEmpty() || prefs.getBoolean(KEY_AUTH_DISABLED, false))
 
-    fun clear() = prefs.edit().remove(KEY_URL).remove(KEY_TOKEN).remove(KEY_AUTH_DISABLED).apply()
+    fun clear() = synchronized(prefs) { prefs.edit().remove(KEY_URL).remove(KEY_TOKEN).remove(KEY_AUTH_DISABLED).apply() }
 
     private companion object {
         const val KEY_URL = "base_url"

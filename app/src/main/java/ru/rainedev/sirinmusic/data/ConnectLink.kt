@@ -2,6 +2,7 @@ package ru.rainedev.sirinmusic.data
 
 import java.net.URI
 import java.net.URLDecoder
+import java.net.URLEncoder
 
 /**
  * What the "add this server" QR in the musik web UI (Profile → Settings) carries:
@@ -9,6 +10,14 @@ import java.net.URLDecoder
  * app from the system camera. A QR with a plain http(s) address only fills the address.
  */
 data class ConnectLink(val baseUrl: String, val token: String?) {
+    fun encode(): String = buildString {
+        append("musik://connect?url=")
+        append(URLEncoder.encode(baseUrl, "UTF-8"))
+        token?.let { append("&token="); append(URLEncoder.encode(it, "UTF-8")) }
+    }
+
+    override fun toString(): String = "ConnectLink(baseUrl=$baseUrl, token=<redacted>)"
+
     companion object {
         fun parse(raw: String): ConnectLink? {
             val text = raw.trim()

@@ -6,6 +6,7 @@ plugins {
 
 // Default APKs retain GitHub updates; -PplayStore=true excludes the updater entirely.
 val playStore = providers.gradleProperty("playStore").map { it.toBooleanStrict() }.orElse(false).get()
+val sideBySide = providers.gradleProperty("sideBySide").map { it.toBooleanStrict() }.orElse(false).get()
 
 android {
     namespace = "ru.rainedev.sirinmusic"
@@ -20,8 +21,9 @@ android {
         applicationId = "ru.rainedev.sirinmusic"
         minSdk = 27
         targetSdk = 36
-        versionCode = 8
-        versionName = "2.1.1"
+        versionCode = 9
+        versionName = "2.2.0"
+        manifestPlaceholders["appLabel"] = "@string/app_name"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -56,6 +58,13 @@ android {
     } else null
 
     buildTypes {
+        debug {
+            if (sideBySide) {
+                applicationIdSuffix = ".dev"
+                versionNameSuffix = "-dev"
+                manifestPlaceholders["appLabel"] = "Sirin Music Dev"
+            }
+        }
         release {
             signingConfig = releaseSigning
             isMinifyEnabled = true

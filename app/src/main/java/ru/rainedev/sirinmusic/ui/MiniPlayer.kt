@@ -56,7 +56,7 @@ fun MiniPlayer(
                         )
                     }
                 }
-                IconButton(onClick = onToggle, enabled = !ui.busy) {
+                IconButton(onClick = onToggle, enabled = !ui.busy || ui.isPlaying) {
                     Icon(
                         if (ui.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                         contentDescription = if (ui.isPlaying) strings(R.string.mini_player_1) else strings(R.string.mini_player_2),

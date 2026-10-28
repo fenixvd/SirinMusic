@@ -37,24 +37,6 @@ import ru.rainedev.sirinmusic.data.ServerConnection
 import ru.rainedev.sirinmusic.data.Settings
 import ru.rainedev.sirinmusic.data.Track
 
-data class PlayerUi(
-    val current: Track? = null,
-    val queue: List<Track> = emptyList(),
-    val sessionId: String? = null,
-    val contextIds: List<String> = emptyList(),
-    val maturity: String? = null,
-    val mode: String = "",
-    val isPlaying: Boolean = false,
-    val positionSec: Double = 0.0,
-    val durationSec: Double = 0.0,
-    val busy: Boolean = false,
-    val error: String? = null,
-    val favorites: Set<Long> = emptySet(),
-    val ratings: Map<Long, String> = emptyMap(),
-    val ratingPending: Set<Long> = emptySet(),
-    val fixed: Boolean = false,
-    val ended: Boolean = false,
-)
 
 /**
  * Мозг воспроизведения. Очередь не строится на клиенте: ответ /api/events
@@ -79,12 +61,31 @@ class PlaybackController(
     private var listenedSec = 0.0
     private var startedReported = false
     private var ownsPlayback = false
+    private var sessionConnection = settings.snapshot()
     private var syncUnavailable = false
     private var syncTicker: Job? = null
-    private var restoreJob: Job? = null
     private val syncMutex = Mutex()
     private val pendingClose = PendingPlaybackClose()
     private val failures = PlaybackFailures()
+
+    private val restorer = PlaybackRestorer(scope,
+        readState = { api.playbackState().state },
+        readSession = api::now,
+        canRestore = { !player.playWhenReady && !_ui.value.busy && !syncUnavailable },
+        onRestore = { restored ->
+            val (saved, now, track) = restored
+            val item = mediaItem(track)
+            generation++ // Old pause saves/events must not overwrite the restored session.
+            _ui.update { it.copy(sessionId = now.sessionId, queue = if (now.fixed) now.tracks else now.queue,
+                fixed = now.fixed, mode = now.mode.orEmpty(), maturity = now.maturity) }
+            installTrack(track, safePlaybackPosition(saved.positionSec, track.duration ?: 0.0), saved.listenedSec, resumed = true, item = item)
+        },
+        onUnavailable = { syncUnavailable = true },
+        onError = { error ->
+            if (error is ApiException && error.code != 404) _ui.update { it.copy(error = strings(R.string.playback_controller_7)) }
+            // Offline startup keeps the local player idle.
+        },
+    )
 
     // ExoPlayer's noisy handler pauses its current stream. This receiver also
     // cancels starts that are still awaiting /play or playback ownership.
@@ -208,45 +209,52 @@ class PlaybackController(
 
 
     private fun load(block: suspend () -> ru.rainedev.sirinmusic.data.RadioStart) {
+        restorer.cancel()
         loadJob?.cancel()
         generation++
         val requestGeneration = generation
         val startTicket = startGate.requestPlay()
         loadJob = scope.launch {
             _ui.update { it.copy(busy = true, error = null) }
-            runCatching { block() }
-                .onSuccess { reply ->
-                    if (generation != requestGeneration) return@onSuccess
-                    val current = reply.current?.takeIf { it.key > 0 && it.ready }
-                    if (current == null) {
-                        _ui.update { it.copy(busy = false, error = strings(R.string.playback_controller_3)) }
-                        return@onSuccess
-                    }
-                    _ui.update {
-                        it.copy(
-                            sessionId = reply.sessionId ?: it.sessionId,
-                            contextIds = emptyList(),
-                            queue = if (reply.fixed) reply.tracks else reply.queue,
-                            fixed = reply.fixed,
-                            ended = false,
-                            ratings = emptyMap(),
-                            ratingPending = emptySet(),
-                            maturity = reply.maturity ?: it.maturity,
-                            mode = reply.mode ?: it.mode,
-                            busy = false,
-                        )
-                    }
-                    play(current, startTicket)
+            try {
+                val reply = block()
+                if (generation != requestGeneration) return@launch
+                val current = reply.current?.takeIf { it.key > 0 && it.ready }
+                if (current == null) {
+                    _ui.update { it.copy(busy = false, error = strings(R.string.playback_controller_3)) }
+                    return@launch
                 }
-                .onFailure { e -> if (e is CancellationException) throw e else if (generation == requestGeneration) _ui.update { it.copy(busy = false, error = e.message) } }
+                val item = mediaItem(current)
+                _ui.update { it.copy(
+                    sessionId = reply.sessionId ?: it.sessionId,
+                    contextIds = emptyList(),
+                    queue = if (reply.fixed) reply.tracks else reply.queue,
+                    fixed = reply.fixed,
+                    ended = false,
+                    ratings = emptyMap(),
+                    ratingPending = emptySet(),
+                    maturity = reply.maturity ?: it.maturity,
+                    mode = reply.mode ?: it.mode,
+                    busy = false,
+                ) }
+                play(current, startTicket, item)
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                if (generation == requestGeneration) _ui.update { it.copy(busy = false, error = e.message) }
+            }
         }
     }
 
     // ---- управление ----
 
+    fun dismissError(message: String) {
+        _ui.update { if (it.error == message) it.copy(error = null) else it }
+    }
+
     fun togglePlay() = setPlaying(!player.playWhenReady)
 
     fun setPlaying(playing: Boolean) {
+        restorer.cancel()
         if (!playing) {
             startGate.pause()
             if (_ui.value.current != null) {
@@ -263,6 +271,7 @@ class PlaybackController(
     }
 
     fun seekTo(sec: Double) {
+        restorer.cancel()
         val position = safePlaybackPosition(sec, _ui.value.durationSec)
         player.seekTo((position * 1000).toLong())
         _ui.update { it.copy(positionSec = position) }
@@ -275,14 +284,17 @@ class PlaybackController(
         val snapshot = _ui.value
         val session = snapshot.sessionId ?: return@launch
         if (snapshot.busy) return@launch
+        restorer.cancel()
         val requestGeneration = generation
-        val startTicket = startGate.requestPlay()
+        // Navigation preserves play/pause intent, including a pause while /previous is pending.
+        val startTicket = startGate.ticket
         _ui.update { it.copy(busy = true, error = null) }
         try {
             val reply = api.previous(session)
             if (requestGeneration == generation) {
+                val item = reply.current?.let(::mediaItem)
                 _ui.update { it.copy(queue = if (reply.fixed) reply.tracks else reply.queue, fixed = reply.fixed) }
-                reply.current?.let { play(it, startTicket) }
+                reply.current?.let { play(it, startTicket, requireNotNull(item)) }
             }
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) { if (requestGeneration == generation) _ui.update { it.copy(error = e.message) } }
@@ -297,6 +309,7 @@ class PlaybackController(
         val snapshot = _ui.value
         val session = snapshot.sessionId ?: return
         if (id in snapshot.ratingPending || snapshot.ratings[id] == type) return
+        restorer.cancel()
         val current = snapshot.current?.takeIf { it.key == id }
         val requestGeneration = generation
         _ui.update { it.copy(ratingPending = it.ratingPending + id) }
@@ -321,6 +334,7 @@ class PlaybackController(
     private fun jump(trackId: Long? = null, index: Int? = null) {
         val session = _ui.value.sessionId ?: return
         if (_ui.value.busy) return
+        restorer.cancel()
         val requestGeneration = generation
         val startTicket = startGate.requestPlay()
         _ui.update { it.copy(busy = true, error = null) }
@@ -328,8 +342,9 @@ class PlaybackController(
             try {
                 val reply = if (index != null) api.jumpIndex(session, index) else api.jump(session, requireNotNull(trackId))
                 if (requestGeneration == generation) {
-                    _ui.update { it.copy(queue = if (reply.fixed) reply.tracks else reply.queue) }
-                    reply.current?.let { play(it, startTicket) }
+                    val item = reply.current?.let(::mediaItem)
+                    _ui.update { it.copy(queue = if (reply.fixed) reply.tracks else reply.queue, fixed = reply.fixed) }
+                    reply.current?.let { play(it, startTicket, requireNotNull(item)) }
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { if (requestGeneration == generation) _ui.update { it.copy(error = e.message) } }
@@ -362,6 +377,7 @@ class PlaybackController(
         val snapshot = _ui.value
         val cur = snapshot.current ?: return
         if (snapshot.busy) return
+        restorer.cancel()
         val requestGeneration = generation
         val startTicket = startGate.ticket
         _ui.update { it.copy(busy = true, error = null) }
@@ -373,9 +389,11 @@ class PlaybackController(
             val reply = api.event(event.type, event.trackId, event.sessionId, event.impressionId,
                 event.position, event.duration, event.listened, eventId = event.id, reason = event.reason)
             if (requestGeneration != generation) return
+            val action = advanceAction(reply, snapshot.fixed, cur)
+            val nextItem = if (action == AdvanceAction.PLAY_NEXT) mediaItem(requireNotNull(reply.next)) else null
             applyQueue(reply)
-            when (advanceAction(reply, snapshot.fixed, cur)) {
-                AdvanceAction.PLAY_NEXT -> play(requireNotNull(reply.next), startTicket)
+            when (action) {
+                AdvanceAction.PLAY_NEXT -> play(requireNotNull(reply.next), startTicket, requireNotNull(nextItem))
                 AdvanceAction.STOP -> {
                     player.pause()
                     _ui.update { it.copy(queue = emptyList(), ended = true) }
@@ -398,13 +416,30 @@ class PlaybackController(
         }
     }
 
-    private fun play(track: Track, startTicket: Long) {
+    private fun play(track: Track, startTicket: Long, item: MediaItem = mediaItem(track)) {
         generation++
-        installTrack(track, 0.0, 0.0, resumed = false)
+        installTrack(track, 0.0, 0.0, resumed = false, item = item)
         if (startGate.allows(startTicket)) beginPlayback(generation, startTicket)
     }
 
-    private fun installTrack(track: Track, position: Double, listened: Double, resumed: Boolean) {
+    private fun mediaItem(track: Track): MediaItem {
+        require(track.key > 0 && track.ready) { strings(R.string.playback_controller_3) }
+        // Метаданные нужны не для UI, а для экрана блокировки и шторки.
+        val metadata = MediaMetadata.Builder()
+            .setTitle(track.title.orEmpty())
+            .setArtist(track.artist.orEmpty())
+            .setAlbumTitle(track.album.orEmpty())
+            .setArtworkUri(android.net.Uri.parse(api.url(track.artworkPath)))
+            .build()
+        return MediaItem.Builder()
+            .setUri(api.url(track.streamPath))
+            .setMediaId(track.key.toString())
+            .setMediaMetadata(metadata)
+            .build()
+    }
+
+    private fun installTrack(track: Track, position: Double, listened: Double, resumed: Boolean, item: MediaItem = mediaItem(track)) {
+        sessionConnection = settings.snapshot()
         pendingClose.clear()
         failures.newTrack()
         ownsPlayback = false
@@ -413,19 +448,6 @@ class PlaybackController(
         startedReported = resumed
         _ui.update { it.copy(current = track, positionSec = position, durationSec = track.duration ?: 0.0,
             ended = false, busy = false) }
-
-        // Метаданные нужны не для UI, а для экрана блокировки и шторки.
-        val metadata = MediaMetadata.Builder()
-            .setTitle(track.title.orEmpty())
-            .setArtist(track.artist.orEmpty())
-            .setAlbumTitle(track.album.orEmpty())
-            .setArtworkUri(android.net.Uri.parse(api.url(track.artworkPath)))
-            .build()
-        val item = MediaItem.Builder()
-            .setUri(api.url(track.streamPath))
-            .setMediaId(track.key.toString())
-            .setMediaMetadata(metadata)
-            .build()
 
         player.playWhenReady = false
         player.setMediaItem(item, (position * 1000).toLong())
@@ -502,29 +524,12 @@ class PlaybackController(
 
     /** Restore once while idle; no autoplay, claim, or duplicate listening event. */
     fun restoreIfIdle(refreshPaused: Boolean = false) {
-        if (player.playWhenReady || _ui.value.busy || restoreJob?.isActive == true || syncUnavailable) return
         if (_ui.value.current != null && !refreshPaused) return
         val expected = generation
-        restoreJob = scope.launch {
-            try {
-                val saved = try { api.playbackState().state }
-                    catch (e: ApiException) { if (e.code == 404) { if (generation == expected) syncUnavailable = true; return@launch }; throw e }
-                if (saved == null || saved.trackId <= 0 || saved.sessionId.isBlank()) return@launch
-                val now = api.now(saved.sessionId)
-                val track = restorableTrack(saved, now) ?: return@launch
-                if (generation != expected || player.playWhenReady || _ui.value.busy) return@launch
-                generation++ // Old pause saves/events must not overwrite the restored session.
-                _ui.update { it.copy(sessionId = now.sessionId, queue = if (now.fixed) now.tracks else now.queue,
-                    fixed = now.fixed, mode = now.mode.orEmpty(), maturity = now.maturity) }
-                installTrack(track, safePlaybackPosition(saved.positionSec, track.duration ?: 0.0), saved.listenedSec, resumed = true)
-            } catch (e: CancellationException) { throw e }
-            catch (e: ApiException) {
-                if (generation == expected && e.code != 404) _ui.update { it.copy(error = strings(R.string.playback_controller_7)) }
-            } catch (_: Exception) { /* Offline startup keeps the local player idle. */ }
-        }
+        restorer.request { generation == expected }
     }
 
-    fun stop() {
+    fun stop(connection: ServerConnection = sessionConnection) {
         pendingClose.clear()
         failures.reset()
         startGate.pause()
@@ -532,9 +537,9 @@ class PlaybackController(
         val stoppedState = snapshot.current?.takeIf { ownsPlayback && !syncUnavailable }?.let {
             PlaybackState(snapshot.sessionId.orEmpty(), it.key,
                 safePlaybackPosition(player.currentPosition / 1000.0, snapshot.durationSec),
-                listenedSec, false, settings.clientId)
+                listenedSec, false, connection.clientId)
         }
-        val stoppedConnection = ServerConnection(settings.baseUrl, settings.token, settings.clientId)
+        val stoppedConnection = connection
         generation++
         val expected = generation
         if (stoppedState != null) scope.launch {
@@ -547,7 +552,7 @@ class PlaybackController(
             }
         }
         loadJob?.cancel()
-        restoreJob?.cancel()
+        restorer.cancel()
         ownsPlayback = false
         syncTicker?.cancel()
         syncUnavailable = false

@@ -10,6 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.*
@@ -20,14 +21,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import androidx.navigation.compose.*
+import ru.rainedev.sirinmusic.playback.PlayerUi
 import ru.rainedev.sirinmusic.data.ConnectLink
 import ru.rainedev.sirinmusic.ui.*
 import ru.rainedev.sirinmusic.ui.theme.SirinMusicTheme
@@ -95,14 +98,16 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
     val pendingLink by vm.pendingLink.value.collectAsStateWithLifecycle()
     val openPlayer by vm.pendingPlayerNavigation.requested.collectAsStateWithLifecycle()
     val player by vm.playback.ui.collectAsStateWithLifecycle()
+    FeedbackToast(state.message, player.error, vm::dismissMessage, vm.playback::dismissError)
     val owner = LocalLifecycleOwner.current
-    DisposableEffect(owner, vm) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) {
-            vm.syncConnection()
-            vm.refreshPausedPlayback()
-        } }
-        owner.lifecycle.addObserver(observer); vm.syncConnection()
-        onDispose { owner.lifecycle.removeObserver(observer) }
+    LaunchedEffect(owner, vm) {
+        owner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            vm.onForeground()
+            while (true) {
+                delay(30_000)
+                vm.checkLibraryChanges()
+            }
+        }
     }
     if (!state.loggedIn) {
         LoginScreen(vm.savedUrl, vm.savedToken, state.checking, state.loginError, vm::login,
@@ -117,20 +122,32 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
             vm.showMessage(strings(R.string.main_activity_1))
         }
     }
+    key(vm.savedUrl, vm.savedToken) {
+        ConnectedContent(app, vm, state, player, openPlayer, onPlayerNavigationConsumed)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ConnectedContent(app: SirinApp, vm: AppViewModel, state: AppState, player: PlayerUi,
+    openPlayer: Boolean, onPlayerNavigationConsumed: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route ?: "home"
+    var showPassport by remember(route, player.current?.key, vm.savedUrl, vm.savedToken) { mutableStateOf(false) }
+    if (route == "now" && showPassport) player.current?.let { track ->
+        TrackPassportPopup(track, app.api, vm.savedUrl + "|" + vm.savedToken) { showPassport = false }
+    }
+    LaunchedEffect(route) {
+        if (route == "home" || route == "library" || route.startsWith("pick/")) vm.refreshContent(force = false)
+    }
     val destinations = listOf(Destination("home", strings(R.string.main_activity_2), Icons.Rounded.Home),
         Destination("library", strings(R.string.main_activity_3), Icons.Rounded.LibraryMusic),
         Destination("playlists", strings(R.string.main_activity_4), Icons.AutoMirrored.Rounded.QueueMusic),
         Destination("profile", strings(R.string.main_activity_5), Icons.Rounded.Person))
     val isDetail = route == "now" || route == "lyrics" || route == "favorites" || route.startsWith("playlist/") || route.startsWith("pick/")
     var addTrackId by rememberSaveable { mutableStateOf<Long?>(null) }
-    val snack = remember { SnackbarHostState() }
-    LaunchedEffect(state.message) {
-        state.message?.let { snack.showSnackbar(it); vm.dismissMessage() }
-    }
     fun mainRoute(target: String) {
         nav.navigate(target) {
             popUpTo(nav.graph.findStartDestination().id) { saveState = true }
@@ -162,10 +179,16 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
                         icon = { Icon(destination.icon, null) }, label = { Text(destination.label) })
                 }
             }
-            Scaffold(modifier = Modifier.weight(1f), snackbarHost = { SnackbarHost(snack) },
+            Scaffold(modifier = Modifier.weight(1f),
                 topBar = { TopAppBar(title = { Text(title) }, navigationIcon = {
                     if (isDetail) IconButton(onClick = { nav.popBackStack() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, strings(R.string.about_activity_2)) }
                 }, actions = {
+                    if (route == "now") {
+                        TrackShareButton(player.current, vm::artworkUrl)
+                        IconButton(onClick = { showPassport = true }, enabled = player.current != null) {
+                            Icon(Icons.Outlined.Info, strings(R.string.track_passport_title))
+                        }
+                    }
                     if (!isDetail) IconButton(onClick = { context.startActivity(Intent(context, SettingsActivity::class.java)) }) {
                         Icon(Icons.Rounded.Settings, strings(R.string.main_activity_11))
                     }
@@ -191,38 +214,43 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
                             recommendations = state.favoriteRecommendations, recommendationsLoading = state.favoriteRecommendationsLoading,
                             recommendationsError = state.favoriteRecommendationsError, onRefreshRecommendations = vm::loadFavoriteRecommendations,
                             onRecommendationTrack = { vm.playback.playTrack(it) }, onRecommendationArtist = { vm.playback.playArtist(it) },
-                            onRecommendationAlbum = { artist, album -> vm.playback.playAlbum(artist, album) })
+                            onRecommendationAlbum = { artist, album -> vm.playback.playAlbum(artist, album) },
+                            refreshing = state.libraryLoading, onRefresh = { vm.refreshContent() })
                     }
                     composable("library") {
                         LibraryScreen(state, player.ratings, player.ratingPending, player.sessionId != null, vm::artworkUrl, { vm.playback.playTrack(it) },
                             { vm.playback.playArtist(it) }, { a, al -> vm.playback.playAlbum(a, al) }, vm::toggleFavorite,
                             vm::toggleArtistFavorite, vm::toggleAlbumFavorite, vm.playback::rate, { addTrackId = it }, padding,
-                            onFavoriteTrack = vm.playback::playFavorite)
+                            onFavoriteTrack = vm.playback::playFavorite, onRefresh = { vm.refreshContent() })
                     }
                     composable("favorites") {
                         LibraryScreen(state, player.ratings, player.ratingPending, player.sessionId != null, vm::artworkUrl, { vm.playback.playFavorite(it) },
                             { vm.playback.playArtist(it) }, { a, al -> vm.playback.playAlbum(a, al) }, vm::toggleFavorite,
-                            vm::toggleArtistFavorite, vm::toggleAlbumFavorite, vm.playback::rate, { addTrackId = it }, padding, favoritesOnly = true)
+                            vm::toggleArtistFavorite, vm::toggleAlbumFavorite, vm.playback::rate, { addTrackId = it }, padding, favoritesOnly = true,
+                            onRefresh = { vm.refreshContent() })
                     }
                     composable("playlists") {
-                        PlaylistsScreen(state, vm::artworkUrl, { nav.navigate("playlist/$it") }, vm::createPlaylist, vm::loadPlaylists, padding)
+                        PlaylistsScreen(state, vm::artworkUrl, { nav.navigate("playlist/$it") }, { vm.openPlaylistEditor() }, vm::loadPlaylists, padding)
                     }
                     composable("playlist/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { backStack ->
                         val id = backStack.arguments!!.getLong("id")
                         LaunchedEffect(id) { vm.openPlaylist(id) }
                         DisposableEffect(id) { onDispose { vm.closePlaylist() } }
-                        PlaylistDetailScreen(state, vm::artworkUrl, vm.playback::playPlaylist, vm::editPlaylist, vm::deletePlaylist,
+                        PlaylistDetailScreen(state, vm::artworkUrl, vm.playback::playPlaylist, vm::openPlaylistEditor, vm::deletePlaylist,
                             vm::removeFromPlaylist, vm::movePlaylistItem, { nav.navigate("pick/$id") }, { vm.openPlaylist(id) }, padding)
-                        LaunchedEffect(state.playlist, state.playlists, state.busy) {
-                            if (!state.playlistLoading && state.playlist == null && "playlist-mutation" !in state.busy &&
-                                state.playlists.none { it.id == id }) nav.popBackStack()
+                        LaunchedEffect(state.playlistState.deletedId) {
+                            if (state.playlistState.deletedId == id) {
+                                vm.consumePlaylistDeletion(id)
+                                nav.popBackStack()
+                            }
                         }
                     }
                     composable("pick/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { stack ->
                         val id = stack.arguments!!.getLong("id")
                         LibraryScreen(state, player.ratings, player.ratingPending, player.sessionId != null, vm::artworkUrl, { vm.addToPlaylist(id, it) },
                             { }, { _, _ -> }, vm::toggleFavorite, vm::toggleArtistFavorite, vm::toggleAlbumFavorite,
-                            vm.playback::rate, { vm.addToPlaylist(id, it) }, padding, selectionMode = true)
+                            vm.playback::rate, { vm.addToPlaylist(id, it) }, padding, selectionMode = true,
+                            onRefresh = { vm.refreshContent() })
                     }
                     composable("now") {
                         NowPlayingScreen(player, vm::artworkUrl, vm.playback::togglePlay, { vm.playback.skip() },
@@ -230,10 +258,10 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
                             { id, index -> if (player.fixed) vm.playback.jumpToIndex(index) else vm.playback.jumpTo(id) }, padding, onLike = vm.playback::like,
                             onLyrics = { nav.navigate("lyrics") }, onAddToPlaylist = { addTrackId = player.current?.key },
                             favoriteBusy = player.current?.let { "favorite:${it.key}" in state.busy } == true,
-                            onPrevious = { vm.playback.previous() }, api = app.api,
-                            profileKey = vm.savedUrl + "|" + vm.savedToken)
+                            onPrevious = { vm.playback.previous() })
                     }
-                    composable("lyrics") { LyricsScreen(app.api, player, vm.playback::seekTo, padding) }
+                    composable("lyrics") { LyricsScreen(app.api, player, vm.playback::seekTo, padding,
+                        connectionKey = vm.savedUrl + "|" + vm.savedToken) }
                     composable("profile") {
                         LaunchedEffect(Unit) { vm.loadProfile() }
                         ProfileScreen(vm.savedUrl, state.serverTracks, state.serverVersion, player.maturity, state.profile,
@@ -259,6 +287,10 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
             catch (e: Exception) { vm.showMessage(strings(R.string.main_activity_12)) }
             finally { vm.consumeShare() }
         }
+    }
+    state.playlistState.editor?.let { draft ->
+        PlaylistEditor(draft, state.playlistState.busy, vm::changePlaylistName,
+            vm::changePlaylistDescription, vm::dismissPlaylistEditor, vm::savePlaylistEditor)
     }
     if (addTrackId != null) AddToPlaylistSheet(state.playlists, "playlist-mutation" in state.busy,
         onSelect = { id -> addTrackId?.let { vm.addToPlaylist(id, it) }; addTrackId = null },

@@ -9,24 +9,15 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import okhttp3.Call
-import okhttp3.Callback
-import okhttp3.Response
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.IOException
 import java.util.concurrent.TimeUnit
-
-class ApiException(val code: Int, message: String) : IOException(message)
 
 /**
  * Клиент к Go-плееру musik. Запросы простые, поэтому без Retrofit: OkHttp плюс
@@ -35,9 +26,9 @@ class ApiException(val code: Int, message: String) : IOException(message)
  */
 class MusikApi(private val settings: ConnectionSettings) {
 
-    private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+    private val json = apiJson
 
-    private val _unauthorized = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val _unauthorized = MutableSharedFlow<ServerConnection>(extraBufferCapacity = 1)
     val unauthorized = _unauthorized.asSharedFlow()
 
     val client: OkHttpClient = OkHttpClient.Builder()
@@ -46,21 +37,31 @@ class MusikApi(private val settings: ConnectionSettings) {
         .followRedirects(false)
         .addInterceptor(Interceptor { chain ->
             val request = chain.request()
-            val base = settings.baseUrl.toHttpUrlOrNull()
+            val connection = request.tag(ServerConnection::class.java) ?: settings.snapshot()
+            val base = connection.baseUrl.toHttpUrlOrNull()
             val sameServer = base != null && request.url.scheme == base.scheme &&
                 request.url.host == base.host && request.url.port == base.port
             val authorized = request.newBuilder().removeHeader("Authorization").apply {
-                if (sameServer && settings.token.isNotEmpty()) header("Authorization", "Bearer ${settings.token}")
+                if (sameServer && connection.token.isNotEmpty()) header("Authorization", "Bearer ${connection.token}")
             }.build()
             val response = chain.proceed(authorized)
-            if (sameServer && response.code == 401) _unauthorized.tryEmit(Unit)
+            if (sameServer && response.code == 401) {
+                if (isCurrentConnection(connection)) _unauthorized.tryEmit(connection)
+            }
             response
         })
         .build()
 
-    fun url(path: String): String {
-        val base = settings.baseUrl.toHttpUrlOrNull() ?: throw IllegalArgumentException(strings(R.string.musik_api_1))
-        val target = if (path.startsWith("/")) (settings.baseUrl + path).toHttpUrlOrNull()
+    fun isCurrentConnection(connection: ServerConnection): Boolean {
+        val current = settings.snapshot()
+        return current.baseUrl == connection.baseUrl && current.token == connection.token
+    }
+
+    fun url(path: String): String = url(path, settings.snapshot())
+
+    private fun url(path: String, connection: ServerConnection): String {
+        val base = connection.baseUrl.toHttpUrlOrNull() ?: throw IllegalArgumentException(strings(R.string.musik_api_1))
+        val target = if (path.startsWith("/")) (connection.baseUrl + path).toHttpUrlOrNull()
             else path.toHttpUrlOrNull()
         require(target != null && target.scheme == base.scheme && target.host == base.host && target.port == base.port) {
             strings(R.string.musik_api_2)
@@ -68,29 +69,16 @@ class MusikApi(private val settings: ConnectionSettings) {
         return target.toString()
     }
 
-    private suspend fun Call.await(): Response = suspendCancellableCoroutine { continuation ->
-        continuation.invokeOnCancellation { cancel() }
-        enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                if (!continuation.isCancelled) continuation.resumeWithException(e)
-            }
-            override fun onResponse(call: Call, response: Response) {
-                continuation.resume(response) { _, value, _ -> value.close() }
-            }
-        })
-    }
-
     private suspend fun raw(path: String, body: String?, method: String = if (body == null) "GET" else "POST"): String = withContext(Dispatchers.IO) {
         val payload = body?.toRequestBody(JSON_TYPE)
-        val request = Request.Builder().url(url(path)).method(method, payload).build()
-        val call = client.newCall(request)
-        try {
-            call.await().use { response ->
-                val text = response.body.string()
-                if (!response.isSuccessful) throw ApiException(response.code, shortError(response.code, text))
-                text
-            }
-        } finally { call.cancel() }
+        val connection = settings.snapshot()
+        val request = Request.Builder().url(url(path, connection)).tag(ServerConnection::class.java, connection)
+            .method(method, payload).build()
+        client.newCall(request).awaitBody { response ->
+            val text = response.body.string()
+            if (!response.isSuccessful) throw ApiException(response.code, shortError(response.code, text))
+            text
+        }
     }
 
     private fun shortError(code: Int, text: String): String = when (code) {

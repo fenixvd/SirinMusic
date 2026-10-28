@@ -483,4 +483,29 @@
     <plurals name="day_count"><item quantity="one">%1$d день</item><item quantity="few">%1$d дня</item><item quantity="many">%1$d дней</item><item quantity="other">%1$d дня</item></plurals>
     <string name="privacy_policy">Политика конфиденциальности</string>
     <string name="privacy_policy_url">https://rainedev.ru/sirin/privacy/</string>
+    <string name="track_passport_title">Паспорт трека</string>
+    <string name="track_passport_close">Закрыть</string>
+    <string name="track_passport_empty">Сведения о треке отсутствуют</string>
+    <string name="track_passport_error">Не удалось загрузить паспорт трека</string>
+    <string name="track_passport_retry">Повторить</string>
+    <string name="track_share_title">Поделиться треком</string>
+    <string name="track_share_text">Название, исполнитель и альбом</string>
+    <string name="track_share_image">Поделиться картинкой</string>
+    <string name="track_share_listening">Сейчас слушаю</string>
+    <string name="track_share_error">Не удалось поделиться треком. Попробуй ещё раз.</string>
+    <string name="track_share_link">Ссылка для прослушивания</string>
+    <string name="track_share_link_soon">Скоро будет, наверное...</string>
+    <string name="about_easter_1">А что ты тут хочешь найти?</string>
+    <string name="about_easter_2">Секретная кнопка «сделать красиво» пока не завезена.</string>
+    <string name="about_easter_3">Режим разработчика? Не, просто тост.</string>
+    <string name="about_easter_4">Ещё пять нажатий — и ничего не случится. Наверное.</string>
+    <string name="about_easter_5">Пять нажатий принято. Заявка на магию отклонена.</string>
+    <string name="about_easter_6">Тут мог быть секретный трек.</string>
+    <string name="about_easter_7">Вы находитесь в очереди. Перед вами ещё 404 человека.</string>
+    <string name="about_easter_8">Поздравляю! Ты разблокировал ещё один тост.</string>
+    <string name="about_credits_title">Благодарности</string>
+    <string name="about_musik_thanks">Спасибо разработчику musik за открытый музыкальный сервер и умное радио.</string>
+    <string name="about_musik_link">musik на GitHub</string>
+    <string name="privacy_policy_open_failed">Не удалось открыть браузер. Адрес: https://rainedev.ru/sirin/privacy/</string>
+    <string name="browser_open_failed">Не найдено приложение для открытия ссылки.</string>
 </resources>

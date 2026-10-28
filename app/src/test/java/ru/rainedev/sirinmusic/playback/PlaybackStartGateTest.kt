@@ -7,6 +7,31 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PlaybackStartGateTest {
+    @Test fun previousTrackPreservesPausedAndPlayingIntent() {
+        val gate = PlaybackStartGate()
+        assertFalse(gate.allows(gate.ticket)) // Previous before any Play must stay silent.
+        gate.requestPlay()
+        val playingNavigation = gate.ticket
+        assertTrue(gate.allows(playingNavigation))
+        gate.pause()
+        val pausedNavigation = gate.ticket
+        assertFalse(gate.allows(pausedNavigation))
+        assertFalse(gate.allows(playingNavigation))
+    }
+
+    @Test fun pauseDuringPreviousTrackRequestWinsOverItsDelayedReply() = runBlocking {
+        val gate = PlaybackStartGate()
+        gate.requestPlay()
+        val ticket = gate.ticket
+        val response = CompletableDeferred<Unit>()
+        var started = false
+        val pending = launch { response.await(); started = gate.allows(ticket) }
+        gate.pause()
+        response.complete(Unit)
+        pending.join()
+        assertFalse(started)
+    }
+
     @Test fun unplugDuringServerClaimCannotStartAudioAfterDelayedReply() = runBlocking {
         val gate = PlaybackStartGate()
         val response = CompletableDeferred<Unit>()

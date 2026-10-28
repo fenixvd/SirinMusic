@@ -2,6 +2,8 @@ package ru.rainedev.sirinmusic.ui
 
 import ru.rainedev.sirinmusic.R
 import ru.rainedev.sirinmusic.strings
+import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -33,7 +35,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -57,16 +59,34 @@ fun NowPlayingScreen(
     onAddToPlaylist: () -> Unit,
     favoriteBusy: Boolean,
     onPrevious: () -> Unit,
-    api: ru.rainedev.sirinmusic.data.MusikApi,
-    profileKey: String,
 ) {
     val track = ui.current
+    val seekKey = ui.sessionId to track
+    val activeSeekKey by rememberUpdatedState(seekKey)
+    val canSeek by rememberUpdatedState(track != null && !ui.busy && ui.durationSec > 0)
+    var seekPosition by remember(seekKey) { mutableStateOf<Float?>(null) }
+    val seekInteractions = remember(seekKey) { MutableInteractionSource() }
+    LaunchedEffect(canSeek) { if (!canSeek) seekPosition = null }
+    LaunchedEffect(seekInteractions) {
+        seekInteractions.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Cancel) seekPosition = null
+        }
+    }
     val information: @Composable () -> Unit = {
         Column(
             Modifier.fillMaxWidth().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            BoxWithConstraints { Artwork(artworkUrl(track?.artworkPath, 640), maxWidth.coerceAtMost(320.dp), corner = 20.dp) }
+            BoxWithConstraints {
+                SwipeableArtwork(
+                    url = artworkUrl(track?.artworkPath, 640),
+                    size = maxWidth.coerceAtMost(320.dp),
+                    trackKey = track?.key,
+                    enabled = track != null && !ui.busy,
+                    onNext = onSkip,
+                    onPrevious = onPrevious,
+                )
+            }
 
             Text(
                 track?.title ?: strings(R.string.lyrics_screen_2),
@@ -93,42 +113,40 @@ fun NowPlayingScreen(
                 )
             }
 
-            TrackPassportCard(api, track?.key, profileKey)
-
-            if (ui.error != null) {
-                Text(
-                    ui.error,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-            }
         }
     }
     // Measured outside the scrolling content, so metadata cannot displace playback actions.
     val controls: @Composable () -> Unit = {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Slider(
-                value = ui.positionSec.toFloat().coerceIn(0f, (ui.durationSec.toFloat()).coerceAtLeast(1f)),
-                enabled = track != null && ui.durationSec > 0,
-                onValueChange = { onSeek(it.toDouble()) },
+                value = (seekPosition ?: ui.positionSec.toFloat()).coerceIn(0f, ui.durationSec.toFloat().coerceAtLeast(1f)),
+                enabled = canSeek,
+                interactionSource = seekInteractions,
+                onValueChange = { seekPosition = it },
+                onValueChangeFinished = {
+                    val position = seekPosition
+                    seekPosition = null
+                    // The thumb previews locally; one seek/save is sent on release.
+                    // A source change or pending navigation cancels the old gesture.
+                    if (position != null && activeSeekKey == seekKey && canSeek) onSeek(position.toDouble())
+                },
                 valueRange = 0f..(if (ui.durationSec > 0) ui.durationSec.toFloat() else 1f),
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(formatTime(ui.positionSec), style = MaterialTheme.typography.bodySmall)
+                Text(formatTime(seekPosition?.toDouble() ?: ui.positionSec), style = MaterialTheme.typography.bodySmall)
                 Text(formatTime(ui.durationSec), style = MaterialTheme.typography.bodySmall)
             }
 
-            Box(Modifier.fillMaxWidth().height(16.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxWidth().height(8.dp), contentAlignment = Alignment.Center) {
                 if (ui.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
             Row(verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 IconButton(onClick = onPrevious, enabled = track != null && !ui.busy) { Icon(Icons.Rounded.SkipPrevious, strings(R.string.now_playing_screen_2)) }
-                FilledIconButton(onClick = onToggle, enabled = track != null && !ui.busy, modifier = Modifier.size(72.dp)) {
+                FilledIconButton(onClick = onToggle, enabled = track != null && (!ui.busy || ui.isPlaying), modifier = Modifier.size(72.dp)) {
                     Icon(if (ui.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                         contentDescription = if (ui.isPlaying) strings(R.string.mini_player_1) else strings(R.string.mini_player_2))
                 }

@@ -118,6 +118,10 @@ internal fun ProfileDetails(
         }
     }
     var createContext by rememberSaveable { mutableStateOf(false) }
+    var createContextRevision by rememberSaveable { mutableLongStateOf(0L) }
+    LaunchedEffect(state.profileState.contextCreated) {
+        if (createContext && state.profileState.contextCreated != createContextRevision) createContext = false
+    }
     var deleteContext by remember { mutableStateOf<ru.rainedev.sirinmusic.data.TasteContext?>(null) }
     ProfileSection(strings(R.string.profile_details_29), Icons.Rounded.AutoAwesome) {
         Text(strings(R.string.profile_details_30))
@@ -138,23 +142,26 @@ internal fun ProfileDetails(
                 }
             }
         }
-        FilledTonalButton(onClick = { createContext = true }, enabled = "contexts" !in state.busy) {
+        FilledTonalButton(onClick = { createContextRevision = state.profileState.contextCreated; createContext = true }, enabled = "contexts" !in state.busy) {
             Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(8.dp)); Text(strings(R.string.playlists_screen_32))
         }
     }
     if (createContext) {
         var name by rememberSaveable { mutableStateOf("") }
         var kind by rememberSaveable { mutableStateOf("mood") }
-        AlertDialog(onDismissRequest = { createContext = false }, title = { Text(strings(R.string.profile_details_36)) },
+        val saving = "contexts" in state.busy
+        AlertDialog(onDismissRequest = { if (!saving) createContext = false }, title = { Text(strings(R.string.profile_details_36)) },
             text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text(strings(R.string.playlists_screen_27)) }, singleLine = true)
+                OutlinedTextField(name, { name = it }, enabled = !saving, label = { Text(strings(R.string.playlists_screen_27)) }, singleLine = true)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("mood" to strings(R.string.profile_details_29), "place" to strings(R.string.profile_details_33), "activity" to strings(R.string.profile_details_34)).forEach { (id, label) ->
-                        FilterChip(selected = kind == id, onClick = { kind = id }, label = { Text(label) })
+                        FilterChip(selected = kind == id, onClick = { kind = id }, enabled = !saving, label = { Text(label) })
                     }
                 }
-            } }, confirmButton = { TextButton(onClick = { onCreateContext(name, kind); createContext = false }, enabled = name.isNotBlank()) { Text(strings(R.string.playlists_screen_32)) } },
-            dismissButton = { TextButton(onClick = { createContext = false }) { Text(strings(R.string.account_activity_71)) } })
+                ProfileError(state, "contexts")
+                if (saving) LinearProgressIndicator(Modifier.fillMaxWidth())
+            } }, confirmButton = { TextButton(onClick = { onCreateContext(name, kind) }, enabled = !saving && name.isNotBlank()) { Text(strings(R.string.playlists_screen_32)) } },
+            dismissButton = { TextButton(onClick = { createContext = false }, enabled = !saving) { Text(strings(R.string.account_activity_71)) } })
     }
     deleteContext?.let { context ->
         AlertDialog(onDismissRequest = { deleteContext = null }, title = { Text(strings(R.string.playlists_screen_22, context.name)) },
