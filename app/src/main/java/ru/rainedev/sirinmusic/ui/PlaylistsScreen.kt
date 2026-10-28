@@ -19,17 +19,17 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import ru.rainedev.sirinmusic.PlaylistDraft
 import ru.rainedev.sirinmusic.AppState
 import ru.rainedev.sirinmusic.data.Playlist
 
 @Composable
 fun PlaylistsScreen(state: AppState, artworkUrl: (String?, Int) -> String?, onOpen: (Long) -> Unit,
-    onCreate: (String, String) -> Unit, onRefresh: () -> Unit, contentPadding: PaddingValues) {
-    var creating by rememberSaveable { mutableStateOf(false) }
+    onCreate: () -> Unit, onRefresh: () -> Unit, contentPadding: PaddingValues) {
     LazyVerticalGrid(columns = GridCells.Adaptive(360.dp), contentPadding = contentPadding) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Button(onClick = { creating = true }, enabled = "playlist-mutation" !in state.busy) {
+                Button(onClick = onCreate, enabled = "playlist-mutation" !in state.busy) {
                     Icon(Icons.Rounded.Add, null); Text(strings(R.string.playlists_screen_1), Modifier.padding(start = 8.dp))
                 }
                 IconButton(onClick = onRefresh, enabled = !state.playlistsLoading) { Icon(Icons.Rounded.Refresh, strings(R.string.playlists_screen_2)) }
@@ -43,14 +43,12 @@ fun PlaylistsScreen(state: AppState, artworkUrl: (String?, Int) -> String?, onOp
                 onClick = { onOpen(p.id) })
         }
     }
-    if (creating) PlaylistEditor(null, { creating = false }) { name, description -> creating = false; onCreate(name, description) }
 }
 
 @Composable
 fun PlaylistDetailScreen(state: AppState, artworkUrl: (String?, Int) -> String?, onPlay: (Long, Int) -> Unit,
-    onEdit: (Playlist, String, String) -> Unit, onDelete: (Long) -> Unit, onRemove: (Long, String) -> Unit,
+    onEdit: (Playlist) -> Unit, onDelete: (Long) -> Unit, onRemove: (Long, String) -> Unit,
     onMove: (Playlist, Int, Int) -> Unit, onAdd: () -> Unit, onRetry: () -> Unit, contentPadding: PaddingValues) {
-    var editing by rememberSaveable { mutableStateOf(false) }
     var deleting by rememberSaveable { mutableStateOf(false) }
     val p = state.playlist
     val busy = "playlist-mutation" in state.busy
@@ -71,7 +69,7 @@ fun PlaylistDetailScreen(state: AppState, artworkUrl: (String?, Int) -> String?,
                             Icon(Icons.Rounded.PlayArrow, null); Text(strings(R.string.playlists_screen_11))
                         }
                         if (p.editable) IconButton(onClick = onAdd, enabled = !busy) { Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, strings(R.string.main_activity_9)) }
-                        IconButton(onClick = { editing = true }, enabled = !busy) { Icon(Icons.Rounded.Edit, strings(R.string.playlists_screen_12)) }
+                        IconButton(onClick = { onEdit(p) }, enabled = !busy) { Icon(Icons.Rounded.Edit, strings(R.string.playlists_screen_12)) }
                         IconButton(onClick = { deleting = true }, enabled = !busy) { Icon(Icons.Rounded.DeleteOutline, strings(R.string.playlists_screen_13)) }
                     }
                 }
@@ -95,7 +93,6 @@ fun PlaylistDetailScreen(state: AppState, artworkUrl: (String?, Int) -> String?,
             }
         }
     }
-    if (editing && p != null) PlaylistEditor(p, { editing = false }) { name, description -> editing = false; onEdit(p, name, description) }
     if (deleting && p != null) AlertDialog(onDismissRequest = { deleting = false }, title = { Text(strings(R.string.playlists_screen_22, p.name)) },
         text = { Text(strings(R.string.playlists_screen_23)) },
         confirmButton = { TextButton(onClick = { deleting = false; onDelete(p.id) }) { Text(strings(R.string.playlists_screen_24)) } },
@@ -103,15 +100,19 @@ fun PlaylistDetailScreen(state: AppState, artworkUrl: (String?, Int) -> String?,
 }
 
 @Composable
-private fun PlaylistEditor(playlist: Playlist?, onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
-    var name by rememberSaveable { mutableStateOf(playlist?.name.orEmpty()) }
-    var description by rememberSaveable { mutableStateOf(playlist?.description.orEmpty()) }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (playlist == null) strings(R.string.playlists_screen_25) else strings(R.string.playlists_screen_26)) },
+internal fun PlaylistEditor(draft: PlaylistDraft, saving: Boolean, onNameChange: (String) -> Unit,
+    onDescriptionChange: (String) -> Unit, onDismiss: () -> Unit, onSave: () -> Unit) {
+    AlertDialog(onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text(strings(if (draft.original == null) R.string.playlists_screen_25 else R.string.playlists_screen_26)) },
         text = { Column {
-            OutlinedTextField(name, { name = it }, label = { Text(strings(R.string.playlists_screen_27)) }, singleLine = true)
-            OutlinedTextField(description, { description = it }, label = { Text(strings(R.string.playlists_screen_28)) }, maxLines = 4, modifier = Modifier.padding(top = 8.dp))
-        } }, confirmButton = { TextButton(onClick = { onSave(name, description) }, enabled = name.isNotBlank()) { Text(strings(R.string.account_activity_58)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(strings(R.string.account_activity_71)) } })
+            OutlinedTextField(draft.name, onNameChange, enabled = !saving,
+                label = { Text(strings(R.string.playlists_screen_27)) }, singleLine = true)
+            OutlinedTextField(draft.description, onDescriptionChange, enabled = !saving,
+                label = { Text(strings(R.string.playlists_screen_28)) }, maxLines = 4, modifier = Modifier.padding(top = 8.dp))
+            draft.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
+            if (saving) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
+        } }, confirmButton = { TextButton(onClick = onSave, enabled = !saving && draft.name.isNotBlank()) { Text(strings(R.string.account_activity_58)) } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !saving) { Text(strings(R.string.account_activity_71)) } })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

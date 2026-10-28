@@ -10,54 +10,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import ru.rainedev.sirinmusic.data.*
 import ru.rainedev.sirinmusic.playback.PlaybackController
-
-// Ratings are session feedback; hearts are persistent server favorites.
-data class AppState(
-    val loggedIn: Boolean = false,
-    val checking: Boolean = false,
-    val loginError: String? = null,
-    val loginProfiles: List<AccountProfile> = emptyList(),
-    val serverTracks: Int = 0,
-    val serverVersion: String? = null,
-    val mixes: List<Mix> = emptyList(),
-    val hint: String? = null,
-    val tracks: List<Track> = emptyList(),
-    val artists: List<ArtistRow> = emptyList(),
-    val artistPhotos: Map<String, String> = emptyMap(),
-    val albums: List<AlbumRow> = emptyList(),
-    val favorites: List<Track> = emptyList(),
-    val favoriteArtists: Set<String> = emptySet(),
-    val favoriteAlbums: Set<Pair<String, String>> = emptySet(),
-    val favoriteArtistRows: List<ArtistRow> = emptyList(),
-    val favoriteAlbumRows: List<AlbumRow> = emptyList(),
-    val favoriteRecommendations: FavoriteRecommendations? = null,
-    val favoriteRecommendationsLoading: Boolean = false,
-    val favoriteRecommendationsError: String? = null,
-    val profile: Profile? = null,
-    val weekly: WeeklyMetrics? = null,
-    val recommendations: Recommendations? = null,
-    val contexts: List<TasteContext> = emptyList(),
-    val rules: List<RadioRule> = emptyList(),
-    val shares: List<RadioShare> = emptyList(),
-    val profileErrors: Map<String, String> = emptyMap(),
-    val profileLoading: Boolean = false,
-    val shareToSend: RadioShare? = null,
-
-    val libraryLoading: Boolean = false,
-    val playlists: List<Playlist> = emptyList(),
-    val playlistsLoading: Boolean = false,
-    val playlist: Playlist? = null,
-    val playlistLoading: Boolean = false,
-    val busy: Set<String> = emptySet(),
-    val message: String? = null,
-)
 
 class AppViewModel(private val settings: Settings, private val api: MusikApi, val playback: PlaybackController) : ViewModel() {
     private val _state = MutableStateFlow(AppState(loggedIn = settings.isConfigured))
@@ -65,8 +23,23 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
     /** musik://connect link from the system camera; kept here to survive Activity recreation. */
     val pendingLink = PendingLink()
     val pendingPlayerNavigation = PendingPlayerNavigation()
-    private val favoritesMutex = Mutex()
     private val jobs = TaskJobs(viewModelScope)
+    private val playlists = PlaylistController(viewModelScope, MusikPlaylistRepository(api)) { message ->
+        _state.update { it.copy(message = message) }
+    }
+    private val login = LoginController(viewModelScope, MusikLoginRepository(), { settings.clientId }) { draft, health, anonymous ->
+        resetContentTasks()
+        playback.stop(connection)
+        settings.setConnection(draft.baseUrl, draft.token, authDisabled = anonymous)
+        connection = settings.snapshot()
+        _state.value = AppState(loggedIn = true, serverTracks = health.tracks, serverVersion = health.version)
+        refreshAll()
+    }
+    private val favorites = FavoritesController(viewModelScope, MusikFavoritesRepository(api), playback::setFavorites, ::showMessage)
+    private val profile = ProfileController(viewModelScope, MusikProfileRepository(api), {
+        playback.ui.value.let { player -> player.sessionId?.let { ContextSession(it, player.contextIds) } }
+    }, playback::setContexts, ::showMessage)
+    private val catalog = CatalogRepository(api)
     private var catalogTrackCount: Int? = null
     private val contentRefresh = ContentRefresh(
         scope = viewModelScope,
@@ -74,33 +47,33 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
         onLoading = { loading -> _state.update { it.copy(libraryLoading = loading) } },
         onError = { e -> _state.update { it.copy(message = e.message ?: strings(R.string.account_activity_2)) } },
         fetch = {
-            // Read the count first: an import finishing mid-fetch is detected on the next check.
-            val health = api.health()
-            val tracks = api.library()
-            val artists = api.artists()
-            val albums = api.albums()
+            val snapshot = catalog.fetch()
             currentCoroutineContext().ensureActive()
-            catalogTrackCount = health.tracks
-            _state.update { it.copy(tracks = tracks, artists = artists.artists, albums = albums.albums,
-                serverTracks = health.tracks, serverVersion = health.version) }
+            catalogTrackCount = snapshot.health.tracks
+            _state.update { it.copy(tracks = snapshot.tracks, artists = snapshot.artists, albums = snapshot.albums,
+                serverTracks = snapshot.health.tracks, serverVersion = snapshot.health.version) }
             loadArtistPhotos(); loadMixes(); loadFavorites(); loadPlaylists()
         },
     )
-    private var connection = settings.baseUrl to settings.token
-    private var selectedPlaylistId: Long? = null
-    private var favoriteRecommendationsRequest = 0
-    // Credentials exist only while choosing a profile, never in settings or saved state.
-    private class PendingAccount(val url: String, val username: String, val password: String, val reply: TokenReply)
-    private var pendingAccount: PendingAccount? = null
+    private var connection = settings.snapshot()
     val savedUrl get() = settings.baseUrl
     val savedToken get() = settings.token
 
     init {
+        viewModelScope.launch { favorites.state.collect { snapshot -> _state.update { it.copy(favoritesState = snapshot) } } }
+        viewModelScope.launch { profile.state.collect { snapshot -> _state.update { it.copy(profileState = snapshot) } } }
         viewModelScope.launch {
-            api.unauthorized.collect {
+            login.state.collect { snapshot -> _state.update { it.copy(loginState = snapshot) } }
+        }
+        viewModelScope.launch {
+            playlists.state.collect { snapshot -> _state.update { it.copy(playlistState = snapshot) } }
+        }
+        viewModelScope.launch {
+            api.unauthorized.collect { rejected ->
+                if (!api.isCurrentConnection(rejected)) return@collect
                 // Keep the saved URL for re-authentication, but never keep a rejected token active.
                 logout(forgetUrl = false)
-                _state.update { it.copy(loginError = strings(R.string.app_view_model_1)) }
+                login.cancel(error = strings(R.string.app_view_model_1))
             }
         }
         if (settings.isConfigured) refreshAll()
@@ -110,12 +83,24 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
         jobs.launch(key) {
             try { block() }
             catch (e: CancellationException) { throw e }
-            catch (e: Exception) { _state.update { it.copy(message = e.message ?: strings(R.string.account_activity_2)) } }
+            catch (e: Exception) {
+                if (taskIsCurrent(key)) _state.update { it.copy(message = e.message ?: strings(R.string.account_activity_2)) }
+            }
         }
     }
 
+    private suspend fun taskIsCurrent(key: String): Boolean = jobs.isCurrent(key, currentCoroutineContext()[Job])
+
     private fun cancelTasks() {
+        login.cancel()
+        resetContentTasks()
+    }
+
+    private fun resetContentTasks() {
         jobs.cancelAll()
+        playlists.reset()
+        favorites.reset()
+        profile.reset()
         contentRefresh.reset()
         catalogTrackCount = null
     }
@@ -124,104 +109,30 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
         if (settings.isConfigured) playback.restoreIfIdle(refreshPaused = true)
     }
 
+    fun onForeground() {
+        syncConnection()
+        refreshPausedPlayback()
+        refreshContent(force = false)
+    }
+
     fun syncConnection() {
-        val current = settings.baseUrl to settings.token
+        val current = settings.snapshot()
         if (connection == current) return
-        cancelTasks(); playback.stop(); connection = current; selectedPlaylistId = null
+        cancelTasks(); playback.stop(connection); connection = current
         _state.value = AppState(loggedIn = settings.isConfigured)
         if (settings.isConfigured) refreshAll()
     }
 
-    fun login(url: String, token: String) = loginWithToken(url, token, false)
-
-    fun loginWithoutToken(url: String) = loginWithToken(url, "", true)
-
-    private fun loginWithToken(url: String, token: String, anonymous: Boolean) {
-        cancelAccountLogin()
-        val error = validateServerUrl(url) ?: if (!anonymous && token.isBlank()) strings(R.string.app_view_model_2) else null
-        if (error != null) { _state.update { it.copy(loginError = error) }; return }
-        task("login") {
-            _state.update { it.copy(checking = true, loginError = null) }
-            try {
-                val draft = ServerConnection(url.trim().trimEnd('/'), token.trim(), settings.clientId)
-                val client = MusikApi(draft)
-                val health = if (anonymous) client.validateAnonymousConnection() else client.validateConnection()
-                settings.setConnection(draft.baseUrl, draft.token, authDisabled = anonymous)
-                connection = settings.baseUrl to settings.token
-                _state.value = AppState(loggedIn = true, serverTracks = health.tracks, serverVersion = health.version)
-                refreshAll()
-            } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { _state.update { it.copy(checking = false, loginError = e.message) } }
-        }
-    }
-
-    fun cancelAccountLogin() {
-        pendingAccount = null
-        _state.update { it.copy(loginProfiles = emptyList()) }
-    }
-
-    fun loginPassword(url: String, username: String, password: String) {
-        cancelAccountLogin()
-        val error = validateServerUrl(url) ?: if (password.isEmpty()) strings(R.string.app_view_model_3) else null
-        if (error != null) { _state.update { it.copy(loginError = error) }; return }
-        task("login") {
-            _state.update { it.copy(checking = true, loginError = null) }
-            try {
-                val base = url.trim().trimEnd('/')
-                val anonymous = MusikApi(ServerConnection(base, "", settings.clientId))
-                val status = anonymous.authStatus()
-                check(!status.multiUser || username.isNotBlank()) { strings(R.string.app_view_model_4) }
-                val reply = anonymous.passwordToken(username, password)
-                check(reply.token.isNotBlank()) { strings(R.string.app_view_model_5) }
-                if (reply.profiles.size > 1) {
-                    pendingAccount = PendingAccount(base, username, password, reply)
-                    _state.update { it.copy(loginProfiles = reply.profiles) }
-                } else completeAccountLogin(base, reply)
-            } catch (e: CancellationException) { pendingAccount = null; throw e }
-            catch (e: ApiException) {
-                _state.update { it.copy(loginError = when (e.code) {
-                    404 -> strings(R.string.app_view_model_6)
-                    401 -> strings(R.string.app_view_model_7)
-                    409 -> strings(R.string.app_view_model_8)
-                    else -> e.message
-                }) }
-            } catch (e: Exception) { _state.update { it.copy(loginError = e.message) } }
-            finally { _state.update { it.copy(checking = false) } }
-        }
-    }
-
-    fun chooseLoginProfile(id: String) {
-        val pending = pendingAccount ?: return
-        if (pending.reply.profiles.none { it.id == id }) return
-        task("login") {
-            _state.update { it.copy(checking = true, loginError = null) }
-            try {
-                val reply = if (pending.reply.device?.profileId == id) pending.reply else
-                    MusikApi(ServerConnection(pending.url, "", settings.clientId))
-                        .passwordToken(pending.username, pending.password, id)
-                check(reply.device?.profileId == id) { strings(R.string.app_view_model_9) }
-                completeAccountLogin(pending.url, reply)
-            } catch (e: CancellationException) { pendingAccount = null; throw e }
-            catch (e: Exception) { _state.update { it.copy(loginError = e.message) } }
-            finally { _state.update { it.copy(checking = false) } }
-        }
-    }
-
-    private suspend fun completeAccountLogin(url: String, reply: TokenReply) {
-        val draft = ServerConnection(url, reply.token, settings.clientId)
-        val health = MusikApi(draft).validateConnection()
-        settings.setConnection(draft.baseUrl, draft.token)
-        pendingAccount = null
-        connection = settings.baseUrl to settings.token
-        _state.value = AppState(loggedIn = true, serverTracks = health.tracks, serverVersion = health.version)
-        refreshAll()
-    }
+    fun login(url: String, token: String) { login.token(url, token) }
+    fun loginWithoutToken(url: String) { login.token(url, "", anonymous = true) }
+    fun loginPassword(url: String, username: String, password: String) { login.password(url, username, password) }
+    fun chooseLoginProfile(id: String) { login.chooseProfile(id) }
+    fun cancelAccountLogin() = login.cancel()
 
     fun logout(forgetUrl: Boolean = true) {
-        pendingAccount = null
-        cancelTasks(); playback.stop()
+        cancelTasks(); playback.stop(connection)
         if (forgetUrl) settings.clear() else settings.token = ""
-        connection = settings.baseUrl to settings.token; selectedPlaylistId = null
+        connection = settings.snapshot()
         _state.value = AppState()
     }
 
@@ -257,73 +168,23 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
     }
     fun loadMixes() = task("mixes") { val r = api.mixes(); _state.update { it.copy(mixes = r.mixes, hint = r.hint) } }
     fun loadLibrary() = refreshContent()
-    fun loadProfile() = task("profile") {
-        refreshProfileDetails()
-        val h = api.health()
-        _state.update { it.copy(serverTracks = h.tracks, serverVersion = h.version) }
-    }
-    private suspend fun <T> section(key: String, fetch: suspend () -> T, apply: (AppState, T) -> AppState) {
-        try {
-            val value = fetch()
-            _state.update { apply(it, value).copy(profileErrors = it.profileErrors - key) }
-        } catch (e: CancellationException) { throw e }
-        catch (e: Exception) {
-            _state.update { it.copy(profileErrors = it.profileErrors + (key to (e.message ?: strings(R.string.app_view_model_11)))) }
+    fun loadProfile() {
+        profile.load()
+        task("profile-health") {
+            val h = api.health()
+            currentCoroutineContext().ensureActive()
+            _state.update { it.copy(serverTracks = h.tracks, serverVersion = h.version) }
         }
     }
-    private suspend fun refreshProfileDetails() {
-        _state.update { it.copy(profileLoading = true) }
-        try {
-            section("taste", { api.profile() }) { s, v -> s.copy(profile = v) }
-            section("weekly", { api.weeklyMetrics() }) { s, v -> s.copy(weekly = v) }
-            section("policy", { api.recommendations() }) { s, v -> s.copy(recommendations = v) }
-            section("contexts", { api.contexts() }) { s, v -> s.copy(contexts = v.contexts) }
-            section("rules", { api.rules() }) { s, v -> s.copy(rules = v.rules.filter { it.action == "block" }) }
-            section("shares", { api.shares() }) { s, v -> s.copy(shares = v.shares.filter { it.active }) }
-        } finally { _state.update { it.copy(profileLoading = false) } }
-    }
-    fun saveExplore(lo: Double, hi: Double) = mutation("explore") {
-        api.saveExplore(lo, hi)
-        val p = api.profile(); _state.update { it.copy(profile = p, message = strings(R.string.app_view_model_12)) }
-    }
-    fun createContext(name: String, kind: String) = mutation("contexts") {
-        api.createContext(name, kind)
-        val r = api.contexts(); _state.update { it.copy(contexts = r.contexts, message = strings(R.string.app_view_model_13)) }
-    }
-    fun toggleContext(id: String, active: Boolean) = mutation("contexts") {
-        val session = playback.ui.value.sessionId ?: error(strings(R.string.app_view_model_14))
-        val r = api.activateContext(id, session, active)
-        playback.setContexts(session, r.contextIds)
-    }
-    fun deleteContext(id: String) = mutation("contexts") {
-        val snapshot = playback.ui.value
-        if (id in snapshot.contextIds && snapshot.sessionId != null) {
-            val r = api.activateContext(id, snapshot.sessionId, false)
-            playback.setContexts(snapshot.sessionId, r.contextIds)
-        }
-        api.deleteContext(id)
-        val r = api.contexts(); _state.update { it.copy(contexts = r.contexts) }
-    }
-    fun restoreRule(id: String?) = mutation("rules") {
-        if (id == null) api.undoRule() else api.restoreRule(id)
-        val r = api.rules(); _state.update { it.copy(rules = r.rules.filter { it.action == "block" }) }
-    }
-    fun createShare(send: Boolean = false) = mutation("shares") {
-        val created = api.createShare()
-        val r = api.shares()
-        _state.update { it.copy(shares = r.shares.filter { it.active }, shareToSend = if (send) created else null) }
-    }
-    fun shareRadio() = mutation("shares") {
-        val r = api.shares()
-        val share = r.shares.firstOrNull { it.active } ?: api.createShare()
-        val updated = api.shares()
-        _state.update { it.copy(shares = updated.shares.filter { it.active }, shareToSend = share) }
-    }
-    fun consumeShare() { _state.update { it.copy(shareToSend = null) } }
-    fun revokeShare(token: String) = mutation("shares") {
-        api.revokeShare(token); val r = api.shares()
-        _state.update { it.copy(shares = r.shares.filter { it.active }) }
-    }
+    fun saveExplore(lo: Double, hi: Double) { profile.saveExplore(lo, hi) }
+    fun createContext(name: String, kind: String) { profile.createContext(name, kind) }
+    fun toggleContext(id: String, active: Boolean) { profile.toggleContext(id, active) }
+    fun deleteContext(id: String) { profile.deleteContext(id) }
+    fun restoreRule(id: String?) { profile.restoreRule(id) }
+    fun createShare(send: Boolean = false) { profile.createShare(send) }
+    fun shareRadio() { profile.shareRadio() }
+    fun consumeShare() = profile.consumeShare()
+    fun revokeShare(token: String) { profile.revokeShare(token) }
     fun refreshServerMixes() = mutation("mix-refresh") {
         val job = api.refreshMixes()
         require(job.id > 0) { strings(R.string.app_view_model_15) }
@@ -343,95 +204,44 @@ class AppViewModel(private val settings: Settings, private val api: MusikApi, va
         _state.update { it.copy(message = strings(R.string.app_view_model_19)) }
     }
 
-    private suspend fun refreshFavorites() {
-        val r = api.favorites(); val tracks = r.tracks.map { it.asTrack() }.filter { it.key > 0 }.distinctBy { it.key }
-        playback.setFavorites(tracks.map { it.key }.toSet())
-        _state.update { it.copy(favorites = tracks, favoriteArtists = r.artists.map { a -> a.artist }.toSet(),
-            favoriteAlbums = r.albums.map { a -> a.artist to a.album }.toSet(), favoriteArtistRows = r.artists, favoriteAlbumRows = r.albums) }
-        loadFavoriteRecommendations()
-    }
-    fun loadFavorites() = task("favorites") { favoritesMutex.withLock { refreshFavorites() } }
-
-    fun loadFavoriteRecommendations() {
-        val request = ++favoriteRecommendationsRequest
-        task("favorite-recommendations") {
-            _state.update { it.copy(favoriteRecommendationsLoading = true, favoriteRecommendationsError = null) }
-            try {
-                val result = api.favoriteRecommendations()
-                if (request == favoriteRecommendationsRequest) _state.update { it.copy(favoriteRecommendations = result) }
-            } catch (e: CancellationException) { throw e }
-            catch (e: ApiException) {
-                if (request == favoriteRecommendationsRequest) _state.update {
-                    if (e.code == 404) it.copy(favoriteRecommendations = null, favoriteRecommendationsError = null)
-                    else it.copy(favoriteRecommendationsError = strings(R.string.app_view_model_20))
-                }
-            } catch (_: Exception) {
-                if (request == favoriteRecommendationsRequest) _state.update { it.copy(favoriteRecommendationsError = strings(R.string.app_view_model_21)) }
-            } finally {
-                if (request == favoriteRecommendationsRequest) _state.update { it.copy(favoriteRecommendationsLoading = false) }
-            }
-        }
-    }
+    fun loadFavorites() { favorites.load() }
+    fun loadFavoriteRecommendations() { favorites.loadRecommendations() }
 
     private fun mutation(key: String, block: suspend () -> Unit) {
         if (key in _state.value.busy) return
-        _state.update { it.copy(busy = it.busy + key) }
+        _state.update { it.copy(operations = it.operations + key) }
         task(key) {
             try { block() }
-            finally { _state.update { it.copy(busy = it.busy - key) } }
+            finally { if (taskIsCurrent(key)) _state.update { it.copy(operations = it.operations - key) } }
         }
     }
-    fun toggleFavorite(id: Long) = mutation("favorite:$id") { favoritesMutex.withLock { api.toggleFavorite(id); refreshFavorites() } }
-    fun toggleArtistFavorite(artist: String) = mutation("artist:$artist") { favoritesMutex.withLock { api.toggleArtistFavorite(artist); refreshFavorites() } }
-    fun toggleAlbumFavorite(artist: String, album: String) = mutation("album:$artist/$album") {
-        favoritesMutex.withLock { api.toggleAlbumFavorite(artist, album); refreshFavorites() }
+    fun toggleFavorite(id: Long) {
+        val track = _state.value.tracks.firstOrNull { it.key == id }
+            ?: _state.value.favorites.firstOrNull { it.key == id }
+            ?: playback.ui.value.current?.takeIf { it.key == id } ?: Track(id = id)
+        favorites.toggleTrack(track)
+    }
+    fun toggleArtistFavorite(artist: String) {
+        favorites.toggleArtist(_state.value.artists.firstOrNull { it.artist == artist } ?: ArtistRow(artist = artist))
+    }
+    fun toggleAlbumFavorite(artist: String, album: String) {
+        favorites.toggleAlbum(_state.value.albums.firstOrNull { it.artist == artist && it.album == album }
+            ?: AlbumRow(artist = artist, album = album))
     }
 
-    private suspend fun refreshPlaylists() { val r = api.playlists(); _state.update { it.copy(playlists = r.playlists) } }
-    fun loadPlaylists() = task("playlists") {
-        _state.update { it.copy(playlistsLoading = true) }
-        try { refreshPlaylists() } finally { _state.update { it.copy(playlistsLoading = false) } }
-    }
-    fun openPlaylist(id: Long) {
-        selectedPlaylistId = id
-        _state.update { it.copy(playlist = null, playlistLoading = true) }
-        task("playlist") {
-            try { val p = api.playlist(id); if (selectedPlaylistId == id) _state.update { it.copy(playlist = p) } }
-            finally { if (selectedPlaylistId == id) _state.update { it.copy(playlistLoading = false) } }
-        }
-    }
-    fun closePlaylist() { selectedPlaylistId = null; jobs.cancel("playlist"); _state.update { it.copy(playlist = null, playlistLoading = false) } }
-    fun createPlaylist(name: String, description: String) = mutation("playlist-mutation") {
-        require(name.isNotBlank()) { strings(R.string.app_view_model_22) }; api.createPlaylist(name.trim(), description.trim()); refreshPlaylists()
-    }
-    fun editPlaylist(p: Playlist, name: String, description: String) = mutation("playlist-mutation") {
-        require(name.isNotBlank()) { strings(R.string.app_view_model_22) }
-        val updated = api.editPlaylist(p, name.trim(), description.trim())
-        if (selectedPlaylistId == p.id) _state.update { it.copy(playlist = updated) }
-        refreshPlaylists()
-    }
-    fun deletePlaylist(id: Long) = mutation("playlist-mutation") {
-        api.deletePlaylist(id)
-        if (selectedPlaylistId == id) closePlaylist()
-        refreshPlaylists()
-    }
-    fun addToPlaylist(id: Long, trackId: Long) = mutation("playlist-mutation") {
-        api.addPlaylistTrack(id, trackId); refreshPlaylists()
-        if (selectedPlaylistId == id) { val p = api.playlist(id); _state.update { it.copy(playlist = p) } }
-        _state.update { it.copy(message = strings(R.string.app_view_model_23)) }
-    }
-    fun removeFromPlaylist(id: Long, itemId: String) = mutation("playlist-mutation") {
-        api.removePlaylistTrack(id, itemId); val p = api.playlist(id)
-        if (selectedPlaylistId == id) _state.update { it.copy(playlist = p) }
-        refreshPlaylists()
-    }
-    fun movePlaylistItem(p: Playlist, index: Int, delta: Int) = mutation("playlist-mutation") {
-        val next = index + delta
-        if (next !in p.tracks.indices) return@mutation
-        val ids = p.tracks.map { it.itemId }.toMutableList(); val item = ids.removeAt(index); ids.add(next, item)
-        val updated = api.reorderPlaylist(p.id, ids)
-        if (selectedPlaylistId == p.id) _state.update { it.copy(playlist = updated) }
-    }
+    fun loadPlaylists() { playlists.load() }
+    fun openPlaylist(id: Long) { playlists.open(id) }
+    fun closePlaylist() = playlists.close()
+    fun openPlaylistEditor(playlist: Playlist? = null) = playlists.edit(playlist)
+    fun changePlaylistName(name: String) = playlists.changeName(name)
+    fun changePlaylistDescription(description: String) = playlists.changeDescription(description)
+    fun dismissPlaylistEditor() = playlists.dismissEditor()
+    fun savePlaylistEditor() { playlists.save() }
+    fun consumePlaylistDeletion(id: Long) = playlists.consumeDeletion(id)
+    fun deletePlaylist(id: Long) { playlists.delete(id) }
+    fun addToPlaylist(id: Long, trackId: Long) { playlists.add(id, trackId) }
+    fun removeFromPlaylist(id: Long, itemId: String) { playlists.remove(id, itemId) }
+    fun movePlaylistItem(p: Playlist, index: Int, delta: Int) { playlists.move(p, index, delta) }
     fun artworkUrl(path: String?, width: Int): String? = path?.let {
         runCatching { api.url(it) + (if (it.contains('?')) "&" else "?") + "w=$width" }.getOrNull()
     }

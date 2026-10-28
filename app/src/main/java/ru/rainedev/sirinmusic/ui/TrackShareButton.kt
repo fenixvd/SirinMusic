@@ -16,8 +16,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
 import ru.rainedev.sirinmusic.R
 import ru.rainedev.sirinmusic.data.Track
 import ru.rainedev.sirinmusic.sharing.createTrackShareCard
@@ -28,13 +26,17 @@ import ru.rainedev.sirinmusic.strings
 @Composable
 internal fun TrackShareButton(track: Track?, artworkUrl: (String?, Int) -> String?) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val shareLabel = strings(R.string.track_share_title)
     var expanded by remember(track?.key) { mutableStateOf(false) }
     var preparing by remember { mutableStateOf(false) }
     fun showError() {
         Toast.makeText(context, strings(R.string.track_share_error), Toast.LENGTH_LONG).show()
     }
+    val prepareImage = rememberScreenAction(
+        onStart = { preparing = true },
+        onError = { showError() },
+        onFinish = { preparing = false },
+    )
     Box {
         IconButton(onClick = { expanded = true }, enabled = track != null && !preparing,
             modifier = Modifier.semantics { contentDescription = shareLabel }) {
@@ -59,14 +61,9 @@ internal fun TrackShareButton(track: Track?, artworkUrl: (String?, Int) -> Strin
                 onClick = {
                     expanded = false
                     val snapshot = track ?: return@DropdownMenuItem
-                    preparing = true
-                    scope.launch {
-                        try {
-                            val file = createTrackShareCard(context, snapshot, artworkUrl(snapshot.artworkPath, 1024))
-                            shareTrackImage(context, snapshot, file)
-                        } catch (e: CancellationException) { throw e }
-                        catch (_: Exception) { showError() }
-                        finally { preparing = false }
+                    prepareImage {
+                        val file = createTrackShareCard(context, snapshot, artworkUrl(snapshot.artworkPath, 1024))
+                        shareTrackImage(context, snapshot, file)
                     }
                 },
             )

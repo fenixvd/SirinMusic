@@ -46,6 +46,34 @@ class MusikApiTest : ru.rainedev.sirinmusic.LocalizedTest() {
         }
     }
 
+    @Test fun stoppedPlaybackUsesOriginalConnectionAfterLiveSettingsChange() = runBlocking {
+        val settings = object : ConnectionSettings {
+            override var baseUrl = "http://127.0.0.1:${server.address.port}"
+            override var token = "original-token"
+            override var clientId = "original-client"
+        }
+        val original = settings.snapshot()
+        settings.baseUrl = "http://127.0.0.1:1"
+        settings.token = "new-token"
+        settings.clientId = "new-client"
+        val stoppedApi = MusikApi(original)
+        body = """{"ok":true}"""
+        try {
+            stoppedApi.savePlaybackState(PlaybackState("old-session", 7, 12.0, 5.0, false, original.clientId), claim = false)
+            val request = requests.take()
+            assertEquals("PUT", request.first)
+            assertEquals("/api/playback/state", request.second)
+            assertEquals("Bearer original-token", authorization.take())
+            val payload = Json.parseToJsonElement(request.third).jsonObject
+            assertEquals("original-client", payload.getValue("client_id").jsonPrimitive.content)
+            assertEquals("old-session", payload.getValue("session_id").jsonPrimitive.content)
+            assertEquals("false", payload.getValue("playing").jsonPrimitive.content)
+        } finally {
+            stoppedApi.client.connectionPool.evictAll()
+            stoppedApi.client.dispatcher.executorService.shutdown()
+        }
+    }
+
     @Test fun trackPassportUsesAuthenticatedDetailRouteAndDecodesMeasuredAndProfileData() = runBlocking {
         body = """{"id":42,"passport":{"format":"MP3","bitrate":320000,"sample_rate":44100,"channels":2,"lufs":-11.3,"bpm":86.0,"key":"D","mode":"minor","year":2009,"duration":190,"genres":["Rock","Alternative"],"plays":2,"early_skips":1,"last_played_at":"2026-10-18T10:00:00Z"}}"""
         val detail = api.trackDetails(42)

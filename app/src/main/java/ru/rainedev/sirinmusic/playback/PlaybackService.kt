@@ -5,6 +5,7 @@ import ru.rainedev.sirinmusic.strings
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Bundle
+import androidx.media3.common.Player
 import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.session.MediaSession
@@ -113,7 +114,8 @@ class PlaybackService : MediaSessionService() {
     override fun onTaskRemoved(rootIntent: android.content.Intent?) {
         // Свайп задачи при паузе — закрываем сервис, чтобы не висеть в шторке зря.
         val player = session?.player
-        if (player == null || !player.isPlaying) {
+        // Buffering still represents a request to play; do not drop its foreground service.
+        if (player == null || !player.playWhenReady || player.playbackState == Player.STATE_ENDED || player.mediaItemCount == 0) {
             stopSelf()
         }
     }

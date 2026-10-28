@@ -19,17 +19,17 @@ import ru.rainedev.sirinmusic.data.*
 import ru.rainedev.sirinmusic.playback.PlayerUi
 
 @Composable
-fun LyricsScreen(api: MusikApi, player: PlayerUi, onSeek: (Double) -> Unit, contentPadding: PaddingValues) {
+fun LyricsScreen(api: MusikApi, player: PlayerUi, onSeek: (Double) -> Unit, contentPadding: PaddingValues, connectionKey: String) {
     val id = player.current?.key
-    var lyrics by remember(id) { mutableStateOf<Lyrics?>(null) }
-    var loading by remember(id) { mutableStateOf(id != null) }
-    var error by remember(id) { mutableStateOf<String?>(null) }
-    var retry by remember(id) { mutableIntStateOf(0) }
+    var lyrics by remember(id, connectionKey) { mutableStateOf<Lyrics?>(null) }
+    var loading by remember(id, connectionKey) { mutableStateOf(id != null) }
+    var error by remember(id, connectionKey) { mutableStateOf<String?>(null) }
+    var retry by remember(id, connectionKey) { mutableIntStateOf(0) }
     var follow by rememberSaveable { mutableStateOf(true) }
     val list = rememberLazyListState()
     val dragged by list.interactionSource.collectIsDraggedAsState()
     LaunchedEffect(dragged) { if (dragged) follow = false }
-    LaunchedEffect(id, retry) {
+    LaunchedEffect(api, connectionKey, id, retry) {
         if (id == null) return@LaunchedEffect
         loading = true; error = null; lyrics = null
         try { lyrics = api.lyrics(id) }

@@ -31,7 +31,7 @@ internal class ContentRefresh(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                onError(e)
+                if (running === currentCoroutineContext()[Job]) onError(e)
             }
         }
         running = job
@@ -49,9 +49,10 @@ internal class ContentRefresh(
     fun isOlderThan(ageMs: Long): Boolean = lastSuccess?.let { now() - it >= ageMs } ?: true
 
     fun reset() {
-        running?.cancel()
+        val old = running
         running = null
         lastSuccess = null
+        old?.cancel()
         onLoading(false)
     }
 }

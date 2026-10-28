@@ -2,12 +2,9 @@ package ru.rainedev.sirinmusic
 
 import ru.rainedev.sirinmusic.R
 import ru.rainedev.sirinmusic.strings
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
-import android.os.PersistableBundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -27,12 +24,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.qrcode.QRCodeWriter
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import ru.rainedev.sirinmusic.data.*
 import ru.rainedev.sirinmusic.ui.theme.SirinMusicTheme
 
@@ -69,7 +60,6 @@ private fun ServerSettingsScreen(app: SirinApp, onBack: () -> Unit) {
     var restartDialog by remember { mutableStateOf(false) }
     var qr by remember { mutableStateOf<Bitmap?>(null) }
     var qrUrl by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
     fun install(value: ServerSettingsReply) {
         reply = value; addr = value.saved.addr; publicUrl = value.saved.publicUrl; library = value.saved.library
         host = addr.substringBeforeLast(':').removeSurrounding("[", "]")
@@ -77,24 +67,18 @@ private fun ServerSettingsScreen(app: SirinApp, onBack: () -> Unit) {
         mode = when (host) { "", "0.0.0.0", "::" -> if (publicUrl.isBlank()) 0 else 1; "127.0.0.1", "localhost", "::1" -> 2; else -> 3 }
         reveal = false; qr = null
     }
-    fun action(block: suspend () -> Unit) {
-        if (busy) return
-        scope.launch {
-            busy = true; error = null
-            try { block() }
-            catch (e: CancellationException) { throw e }
-            catch (e: Exception) { error = when ((e as? ApiException)?.code) {
-                403 -> strings(R.string.server_settings_activity_1)
-                404 -> strings(R.string.server_settings_activity_2)
-                else -> e.message ?: strings(R.string.server_settings_activity_3)
-            } }
-            finally { busy = false }
-        }
-    }
+    val action = ru.rainedev.sirinmusic.ui.rememberScreenAction(
+        onStart = { busy = true; error = null },
+        onError = { e -> error = when ((e as? ApiException)?.code) {
+            403 -> strings(R.string.server_settings_activity_1)
+            404 -> strings(R.string.server_settings_activity_2)
+            else -> e.message ?: strings(R.string.server_settings_activity_3)
+        } },
+        onFinish = { busy = false },
+    )
     fun copy(text: String, secret: Boolean = false) {
-        val clip = ClipData.newPlainText(if (secret) strings(R.string.account_activity_33) else strings(R.string.server_settings_activity_4), text)
-        if (secret) clip.description.extras = PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
-        app.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
+        ru.rainedev.sirinmusic.ui.copyText(app, text,
+            if (secret) strings(R.string.account_activity_33) else strings(R.string.server_settings_activity_4), secret)
         notice = strings(R.string.account_activity_3)
     }
     LaunchedEffect(Unit) { action { install(app.api.serverSettings()) } }
@@ -140,14 +124,7 @@ private fun ServerSettingsScreen(app: SirinApp, onBack: () -> Unit) {
                     Row {
                         TextButton(onClick = { copy(url) }) { Text(strings(R.string.account_activity_36)) }
                         TextButton(onClick = { action {
-                            val payload = "musik://connect?url=${java.net.URLEncoder.encode(url, "UTF-8")}&token=${java.net.URLEncoder.encode(data.phone.token, "UTF-8")}"
-                            qr = withContext(Dispatchers.Default) {
-                                val matrix = QRCodeWriter().encode(payload, BarcodeFormat.QR_CODE, 768, 768)
-                                Bitmap.createBitmap(768, 768, Bitmap.Config.ARGB_8888).apply {
-                                    val pixels = IntArray(768 * 768) { i -> if (matrix[i % 768, i / 768]) android.graphics.Color.BLACK else android.graphics.Color.WHITE }
-                                    setPixels(pixels, 0, 768, 0, 0, 768, 768)
-                                }
-                            }; qrUrl = url
+                            qr = createConnectionQr(url, data.phone.token); qrUrl = url
                         } }, enabled = !busy) { Text(strings(R.string.server_settings_activity_28)) }
                     }
                 }

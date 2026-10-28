@@ -2,11 +2,8 @@ package ru.rainedev.sirinmusic.ui
 
 import ru.rainedev.sirinmusic.R
 import ru.rainedev.sirinmusic.strings
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -19,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -31,7 +27,6 @@ import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.ThumbDown
 import androidx.compose.material.icons.rounded.ThumbUp
-import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.FilledIconButton
@@ -46,8 +41,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import ru.rainedev.sirinmusic.playback.PlayerUi
 
 @Composable
@@ -68,6 +61,17 @@ fun NowPlayingScreen(
     onPrevious: () -> Unit,
 ) {
     val track = ui.current
+    val seekKey = ui.sessionId to track
+    val activeSeekKey by rememberUpdatedState(seekKey)
+    val canSeek by rememberUpdatedState(track != null && !ui.busy && ui.durationSec > 0)
+    var seekPosition by remember(seekKey) { mutableStateOf<Float?>(null) }
+    val seekInteractions = remember(seekKey) { MutableInteractionSource() }
+    LaunchedEffect(canSeek) { if (!canSeek) seekPosition = null }
+    LaunchedEffect(seekInteractions) {
+        seekInteractions.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Cancel) seekPosition = null
+        }
+    }
     val information: @Composable () -> Unit = {
         Column(
             Modifier.fillMaxWidth().padding(24.dp),
@@ -118,13 +122,21 @@ fun NowPlayingScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Slider(
-                value = ui.positionSec.toFloat().coerceIn(0f, (ui.durationSec.toFloat()).coerceAtLeast(1f)),
-                enabled = track != null && ui.durationSec > 0,
-                onValueChange = { onSeek(it.toDouble()) },
+                value = (seekPosition ?: ui.positionSec.toFloat()).coerceIn(0f, ui.durationSec.toFloat().coerceAtLeast(1f)),
+                enabled = canSeek,
+                interactionSource = seekInteractions,
+                onValueChange = { seekPosition = it },
+                onValueChangeFinished = {
+                    val position = seekPosition
+                    seekPosition = null
+                    // The thumb previews locally; one seek/save is sent on release.
+                    // A source change or pending navigation cancels the old gesture.
+                    if (position != null && activeSeekKey == seekKey && canSeek) onSeek(position.toDouble())
+                },
                 valueRange = 0f..(if (ui.durationSec > 0) ui.durationSec.toFloat() else 1f),
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(formatTime(ui.positionSec), style = MaterialTheme.typography.bodySmall)
+                Text(formatTime(seekPosition?.toDouble() ?: ui.positionSec), style = MaterialTheme.typography.bodySmall)
                 Text(formatTime(ui.durationSec), style = MaterialTheme.typography.bodySmall)
             }
 
@@ -134,7 +146,7 @@ fun NowPlayingScreen(
             Row(verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 IconButton(onClick = onPrevious, enabled = track != null && !ui.busy) { Icon(Icons.Rounded.SkipPrevious, strings(R.string.now_playing_screen_2)) }
-                FilledIconButton(onClick = onToggle, enabled = track != null && !ui.busy, modifier = Modifier.size(72.dp)) {
+                FilledIconButton(onClick = onToggle, enabled = track != null && (!ui.busy || ui.isPlaying), modifier = Modifier.size(72.dp)) {
                     Icon(if (ui.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                         contentDescription = if (ui.isPlaying) strings(R.string.mini_player_1) else strings(R.string.mini_player_2))
                 }
@@ -192,35 +204,4 @@ fun NowPlayingScreen(
             }
         }
     }
-}
-
-@Composable
-internal fun TrackPassportPopup(
-    track: ru.rainedev.sirinmusic.data.Track,
-    api: ru.rainedev.sirinmusic.data.MusikApi,
-    profileKey: String,
-    onDismiss: () -> Unit,
-) {
-        Popup(
-            onDismissRequest = onDismiss,
-            properties = PopupProperties(focusable = true),
-        ) {
-            // One dismiss target over the whole player: taps on the card and scrim close it
-            // without passing the same tap through to playback controls underneath.
-            Box(Modifier.fillMaxSize()
-                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
-                .clickable(onClickLabel = strings(R.string.track_passport_close)) { onDismiss() }
-                .padding(24.dp), contentAlignment = Alignment.Center) {
-                Surface(modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth(),
-                    shape = MaterialTheme.shapes.extraLarge, tonalElevation = 6.dp) {
-                    Column(Modifier.padding(24.dp)) {
-                        Text(strings(R.string.track_passport_title), style = MaterialTheme.typography.headlineSmall)
-                        Column(Modifier.padding(top = 16.dp).heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-                            Text(track.title ?: "—", style = MaterialTheme.typography.titleMedium)
-                            TrackPassportCard(api, track.key, profileKey, interactive = false)
-                        }
-                    }
-                }
-            }
-        }
 }

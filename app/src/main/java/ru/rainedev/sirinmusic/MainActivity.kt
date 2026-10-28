@@ -4,7 +4,6 @@ import ru.rainedev.sirinmusic.R
 import ru.rainedev.sirinmusic.strings
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -22,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -32,6 +30,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import androidx.navigation.compose.*
+import ru.rainedev.sirinmusic.playback.PlayerUi
 import ru.rainedev.sirinmusic.data.ConnectLink
 import ru.rainedev.sirinmusic.ui.*
 import ru.rainedev.sirinmusic.ui.theme.SirinMusicTheme
@@ -99,35 +98,16 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
     val pendingLink by vm.pendingLink.value.collectAsStateWithLifecycle()
     val openPlayer by vm.pendingPlayerNavigation.requested.collectAsStateWithLifecycle()
     val player by vm.playback.ui.collectAsStateWithLifecycle()
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var feedbackToast by remember { mutableStateOf<Toast?>(null) }
-    DisposableEffect(Unit) { onDispose { feedbackToast?.cancel() } }
-    LaunchedEffect(state.message, player.error) {
-        val messages = listOfNotNull(player.error, state.message).distinct()
-        if (messages.isNotEmpty()) {
-            feedbackToast?.cancel()
-            feedbackToast = Toast.makeText(context, messages.joinToString("\n"), Toast.LENGTH_LONG).also { it.show() }
-            if (state.message != null) vm.dismissMessage()
-            player.error?.let(vm.playback::dismissError)
-        }
-    }
+    FeedbackToast(state.message, player.error, vm::dismissMessage, vm.playback::dismissError)
     val owner = LocalLifecycleOwner.current
-    LaunchedEffect(owner, vm, state.loggedIn) {
-        if (state.loggedIn) owner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            vm.refreshContent(force = false)
+    LaunchedEffect(owner, vm) {
+        owner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            vm.onForeground()
             while (true) {
                 delay(30_000)
                 vm.checkLibraryChanges()
             }
         }
-    }
-    DisposableEffect(owner, vm) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) {
-            vm.syncConnection()
-            vm.refreshPausedPlayback()
-        } }
-        owner.lifecycle.addObserver(observer); vm.syncConnection()
-        onDispose { owner.lifecycle.removeObserver(observer) }
     }
     if (!state.loggedIn) {
         LoginScreen(vm.savedUrl, vm.savedToken, state.checking, state.loginError, vm::login,
@@ -142,6 +122,16 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
             vm.showMessage(strings(R.string.main_activity_1))
         }
     }
+    key(vm.savedUrl, vm.savedToken) {
+        ConnectedContent(app, vm, state, player, openPlayer, onPlayerNavigationConsumed)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ConnectedContent(app: SirinApp, vm: AppViewModel, state: AppState, player: PlayerUi,
+    openPlayer: Boolean, onPlayerNavigationConsumed: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route ?: "home"
@@ -240,17 +230,19 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
                             onRefresh = { vm.refreshContent() })
                     }
                     composable("playlists") {
-                        PlaylistsScreen(state, vm::artworkUrl, { nav.navigate("playlist/$it") }, vm::createPlaylist, vm::loadPlaylists, padding)
+                        PlaylistsScreen(state, vm::artworkUrl, { nav.navigate("playlist/$it") }, { vm.openPlaylistEditor() }, vm::loadPlaylists, padding)
                     }
                     composable("playlist/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { backStack ->
                         val id = backStack.arguments!!.getLong("id")
                         LaunchedEffect(id) { vm.openPlaylist(id) }
                         DisposableEffect(id) { onDispose { vm.closePlaylist() } }
-                        PlaylistDetailScreen(state, vm::artworkUrl, vm.playback::playPlaylist, vm::editPlaylist, vm::deletePlaylist,
+                        PlaylistDetailScreen(state, vm::artworkUrl, vm.playback::playPlaylist, vm::openPlaylistEditor, vm::deletePlaylist,
                             vm::removeFromPlaylist, vm::movePlaylistItem, { nav.navigate("pick/$id") }, { vm.openPlaylist(id) }, padding)
-                        LaunchedEffect(state.playlist, state.playlists, state.busy) {
-                            if (!state.playlistLoading && state.playlist == null && "playlist-mutation" !in state.busy &&
-                                state.playlists.none { it.id == id }) nav.popBackStack()
+                        LaunchedEffect(state.playlistState.deletedId) {
+                            if (state.playlistState.deletedId == id) {
+                                vm.consumePlaylistDeletion(id)
+                                nav.popBackStack()
+                            }
                         }
                     }
                     composable("pick/{id}", arguments = listOf(navArgument("id") { type = NavType.LongType })) { stack ->
@@ -268,7 +260,8 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
                             favoriteBusy = player.current?.let { "favorite:${it.key}" in state.busy } == true,
                             onPrevious = { vm.playback.previous() })
                     }
-                    composable("lyrics") { LyricsScreen(app.api, player, vm.playback::seekTo, padding) }
+                    composable("lyrics") { LyricsScreen(app.api, player, vm.playback::seekTo, padding,
+                        connectionKey = vm.savedUrl + "|" + vm.savedToken) }
                     composable("profile") {
                         LaunchedEffect(Unit) { vm.loadProfile() }
                         ProfileScreen(vm.savedUrl, state.serverTracks, state.serverVersion, player.maturity, state.profile,
@@ -294,6 +287,10 @@ private fun SirinContent(app: SirinApp, onPlayerNavigationConsumed: () -> Unit) 
             catch (e: Exception) { vm.showMessage(strings(R.string.main_activity_12)) }
             finally { vm.consumeShare() }
         }
+    }
+    state.playlistState.editor?.let { draft ->
+        PlaylistEditor(draft, state.playlistState.busy, vm::changePlaylistName,
+            vm::changePlaylistDescription, vm::dismissPlaylistEditor, vm::savePlaylistEditor)
     }
     if (addTrackId != null) AddToPlaylistSheet(state.playlists, "playlist-mutation" in state.busy,
         onSelect = { id -> addTrackId?.let { vm.addToPlaylist(id, it) }; addTrackId = null },

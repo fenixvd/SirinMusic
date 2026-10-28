@@ -3,43 +3,19 @@ package ru.rainedev.sirinmusic.data
 import ru.rainedev.sirinmusic.R
 import ru.rainedev.sirinmusic.strings
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.IOException
 import java.util.concurrent.TimeUnit
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-
-@Serializable
-data class AccountUser(val id: String = "", @SerialName("display_name") val displayName: String = "", val roles: List<String> = emptyList())
-@Serializable
-data class AccountMe(val ok: Boolean = false, @SerialName("multi_user") val multiUser: Boolean = false, @SerialName("local_account") val localAccount: Boolean = false, val user: AccountUser = AccountUser(), @SerialName("active_profile") val activeProfile: AccountProfile? = null, val profiles: List<AccountProfile> = emptyList())
-@Serializable
-data class ManagedDevice(val id: String = "", val name: String = "", @SerialName("profile_id") val profileId: String = "", @SerialName("profile_name") val profileName: String = "", @SerialName("created_at") val createdAt: String = "", @SerialName("last_used_at") val lastUsedAt: String? = null, @SerialName("expires_at") val expiresAt: String = "", @SerialName("revoked_at") val revokedAt: String? = null)
-@Serializable
-data class ManagedDevices(val tokens: List<ManagedDevice> = emptyList())
-@Serializable
-class IssuedDevice(val token: String = "", val device: ManagedDevice = ManagedDevice(), val qr: String = "")
-@Serializable
-data class ManagedUser(val id: String = "", @SerialName("display_name") val displayName: String = "", val status: String = "", val admin: Boolean = false, val profiles: Int = 0)
-@Serializable
-data class ManagedInvitation(val id: String = "", val email: String = "", @SerialName("created_at") val createdAt: String = "", @SerialName("expires_at") val expiresAt: String = "", @SerialName("consumed_at") val consumedAt: String = "", @SerialName("revoked_at") val revokedAt: String = "")
-@Serializable
-class IssuedInvitation(val id: String = "", val secret: String = "", val url: String = "")
 
 /** Separate browser credential channel: never mixes account cookies with the player's Bearer. */
 class AccountApi(baseUrl: String) {
     val base = baseUrl.trimEnd('/').toHttpUrl()
     val origin: String = base.newBuilder().encodedPath("/").query(null).fragment(null).build().toString().trimEnd('/')
-    private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
     private val jar = AccountCookieJar(base)
     val client = OkHttpClient.Builder().cookieJar(jar).followRedirects(false).followSslRedirects(false)
         .connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
@@ -53,27 +29,20 @@ class AccountApi(baseUrl: String) {
                 if (method !in listOf("GET", "HEAD")) jar.csrf(url)?.let { header("X-CSRF-Token", it) }
             }.build()
         val call = client.newCall(request)
-        val response = suspendCancellableCoroutine<Response> { continuation ->
-            continuation.invokeOnCancellation { call.cancel() }
-            call.enqueue(object : Callback {
-                override fun onFailure(call: Call, e: IOException) { if (!continuation.isCancelled) continuation.resumeWithException(e) }
-                override fun onResponse(call: Call, response: Response) { continuation.resume(response) { _, value, _ -> value.close() } }
-            })
-        }
-        response.use {
-            val text = it.body.string()
-            if (!it.isSuccessful) throw ApiException(it.code, when (it.code) {
+        call.awaitBody { response ->
+            val text = response.body.string()
+            if (!response.isSuccessful) throw ApiException(response.code, when (response.code) {
                 401 -> strings(R.string.account_api_3)
                 403 -> strings(R.string.account_api_4)
                 404 -> strings(R.string.account_api_5)
                 409 -> strings(R.string.account_api_6)
                 429 -> strings(R.string.account_api_7)
-                else -> strings(R.string.account_api_8, it.code)
+                else -> strings(R.string.account_api_8, response.code)
             })
             text
         }
     }
-    private suspend inline fun <reified T> get(path: String): T = json.decodeFromString(raw(path))
+    private suspend inline fun <reified T> get(path: String): T = decodeApiJson(raw(path))
     suspend fun me(): AccountMe = get("/api/auth/me")
     suspend fun login(username: String, password: String): AccountMe {
         require(username.isNotBlank() && password.length in 8..256) { strings(R.string.account_api_9) }
@@ -91,14 +60,14 @@ class AccountApi(baseUrl: String) {
     suspend fun deleteProfile(id: String) { raw("/api/profiles/${segment(id)}", "DELETE") }
     suspend fun activateProfile(id: String) { raw("/api/profiles/${segment(id)}/activate", "POST", "{}") }
     suspend fun devices(): List<ManagedDevice> = get<ManagedDevices>("/api/account/device-tokens").tokens
-    suspend fun createDevice(name: String, profile: String): IssuedDevice = json.decodeFromString(raw("/api/account/device-tokens", "POST", "{\"name\":${quoted(name.trim())},\"profile_id\":${quoted(profile)}}"))
-    suspend fun replaceDevice(id: String): IssuedDevice = json.decodeFromString(raw("/api/account/device-tokens/${segment(id)}/replace", "POST", "{}"))
+    suspend fun createDevice(name: String, profile: String): IssuedDevice = decodeApiJson(raw("/api/account/device-tokens", "POST", "{\"name\":${quoted(name.trim())},\"profile_id\":${quoted(profile)}}"))
+    suspend fun replaceDevice(id: String): IssuedDevice = decodeApiJson(raw("/api/account/device-tokens/${segment(id)}/replace", "POST", "{}"))
     suspend fun revokeDevice(id: String) { raw("/api/account/device-tokens/${segment(id)}", "DELETE") }
     suspend fun users(): List<ManagedUser> = get("/api/admin/users")
     suspend fun invitations(): List<ManagedInvitation> = get("/api/admin/invitations")
     suspend fun invite(email: String, hours: Int): IssuedInvitation {
         require(hours in 1..168) { strings(R.string.account_api_12) }
-        return json.decodeFromString(raw("/api/admin/invitations", "POST", "{\"email\":${quoted(email.trim())},\"ttl_hours\":$hours}"))
+        return decodeApiJson(raw("/api/admin/invitations", "POST", "{\"email\":${quoted(email.trim())},\"ttl_hours\":$hours}"))
     }
     suspend fun revokeInvitation(id: String) { raw("/api/admin/invitations/${segment(id)}", "DELETE") }
     suspend fun updateUser(id: String, active: Boolean, admin: Boolean) { raw("/api/admin/users/${segment(id)}", "PATCH", "{\"status\":${quoted(if (active) "active" else "disabled")},\"admin\":$admin}") }

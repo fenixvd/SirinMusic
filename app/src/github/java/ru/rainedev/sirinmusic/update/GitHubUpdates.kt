@@ -2,6 +2,7 @@ package ru.rainedev.sirinmusic.update
 
 import ru.rainedev.sirinmusic.R
 import ru.rainedev.sirinmusic.strings
+import ru.rainedev.sirinmusic.data.awaitBody
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
@@ -9,19 +10,14 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.decodeFromString
-import okhttp3.Call
-import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 @Serializable
 internal data class GitHubRelease(
@@ -68,19 +64,21 @@ internal class GitHubUpdates(private val client: OkHttpClient = OkHttpClient.Bui
         val request = Request.Builder().url("https://api.github.com/repos/fenixvd/SirinMusic/releases/latest")
             .header("Accept", "application/vnd.github+json").header("X-GitHub-Api-Version", "2022-11-28")
             .header("User-Agent", "SirinMusic/$installed").build()
-        client.newCall(request).await().use { response ->
-            if (response.code == 404) return@withContext null
-            if (response.code == 403 || response.code == 429) throw IOException(strings(R.string.git_hub_updates_1))
-            checkResponse(response)
-            val text = response.body.string()
-            withContext(Dispatchers.Default) { selectUpdate(json.decodeFromString<GitHubRelease>(text), installed) }
-        }
+        val text = client.newCall(request).awaitBody { response ->
+            if (response.code == 404) null else {
+                if (response.code == 403 || response.code == 429) throw IOException(strings(R.string.git_hub_updates_1))
+                checkResponse(response)
+                response.body.string()
+            }
+        } ?: return@withContext null
+        withContext(Dispatchers.Default) { selectUpdate(json.decodeFromString<GitHubRelease>(text), installed) }
     }
 
     suspend fun download(update: AvailableUpdate, partial: File, onProgress: (Float) -> Unit) = withContext(Dispatchers.IO) {
         require(update.bytes in 1L..MAX_APK_BYTES)
         val request = Request.Builder().url(update.url).build()
-        client.newCall(request).await().use { response ->
+        val caller = currentCoroutineContext()
+        client.newCall(request).awaitBody { response ->
             checkResponse(response)
             require(response.request.url.scheme == "https" && response.request.url.host in setOf(
                 "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")) { strings(R.string.git_hub_updates_2) }
@@ -89,7 +87,7 @@ internal class GitHubUpdates(private val client: OkHttpClient = OkHttpClient.Bui
             partial.outputStream().use { output -> response.body.byteStream().use { input ->
                 val buffer = ByteArray(64 * 1024)
                 while (true) {
-                    currentCoroutineContext().ensureActive()
+                    caller.ensureActive()
                     val count = input.read(buffer)
                     if (count < 0) break
                     total += count
@@ -106,14 +104,5 @@ internal class GitHubUpdates(private val client: OkHttpClient = OkHttpClient.Bui
     }
     private fun checkResponse(response: Response) {
         if (!response.isSuccessful) throw IOException(strings(R.string.git_hub_updates_6, response.code))
-    }
-    private suspend fun Call.await(): Response = suspendCancellableCoroutine { continuation ->
-        continuation.invokeOnCancellation { cancel() }
-        enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) { if (!continuation.isCancelled) continuation.resumeWithException(e) }
-            override fun onResponse(call: Call, response: Response) {
-                continuation.resume(response) { _, value, _ -> value.close() }
-            }
-        })
     }
 }

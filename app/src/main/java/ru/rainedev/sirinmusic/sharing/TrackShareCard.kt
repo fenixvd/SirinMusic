@@ -38,23 +38,25 @@ internal suspend fun createTrackShareCard(context: Context, track: Track, artwor
     } catch (_: Exception) {
         null // A missing/offline cover still produces a branded card.
     }
-    val bitmap = withContext(Dispatchers.Default) { renderTrackShareCard(context, track, artwork) }
-    try {
-        return withContext(Dispatchers.IO) {
-            val folder = File(context.cacheDir, "shared_tracks").apply { check(mkdirs() || isDirectory) }
-            val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1)
-            folder.listFiles()?.filter { it.isFile && it.lastModified() < cutoff }?.forEach { it.delete() }
-            val target = File(folder, "sirin-${UUID.randomUUID()}.png")
-            try {
-                target.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
-                target
-            } catch (e: Exception) {
-                target.delete()
-                throw e
+    return withContext(Dispatchers.Default) {
+        val bitmap = renderTrackShareCard(context, track, artwork)
+        try {
+            withContext(Dispatchers.IO) {
+                val folder = File(context.cacheDir, "shared_tracks").apply { check(mkdirs() || isDirectory) }
+                val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1)
+                folder.listFiles()?.filter { it.isFile && it.lastModified() < cutoff }?.forEach { it.delete() }
+                val target = File(folder, "sirin-${UUID.randomUUID()}.png")
+                try {
+                    target.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+                    target
+                } catch (e: Exception) {
+                    target.delete()
+                    throw e
+                }
             }
+        } finally {
+            bitmap.recycle()
         }
-    } finally {
-        bitmap.recycle()
     }
 }
 

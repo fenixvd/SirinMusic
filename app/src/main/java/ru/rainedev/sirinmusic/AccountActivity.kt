@@ -2,11 +2,8 @@ package ru.rainedev.sirinmusic
 
 import ru.rainedev.sirinmusic.R
 import ru.rainedev.sirinmusic.strings
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Intent
 import android.os.Bundle
-import android.os.PersistableBundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,16 +23,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.*
 import ru.rainedev.sirinmusic.data.*
 import ru.rainedev.sirinmusic.ui.theme.SirinMusicTheme
 
-class AccountSession(baseUrl: String) : ViewModel() {
-    val api = runCatching { AccountApi(baseUrl) }.getOrNull()
-    override fun onCleared() {
-        api?.let { client -> CoroutineScope(Dispatchers.IO).launch { try { runCatching { client.logout() } } finally { client.close() } } }
-    }
-}
 class AccountActivity : ru.rainedev.sirinmusic.SirinActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); enableEdgeToEdge()
@@ -77,7 +67,6 @@ private fun AccountScreen(app: SirinApp, api: AccountApi?, onBack: () -> Unit) {
     var qr by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var phoneUrl by remember { mutableStateOf(api?.origin.orEmpty()) }
     var revealToken by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
     suspend fun reload() {
         val client = api ?: return
         val account = client.me()
@@ -91,20 +80,17 @@ private fun AccountScreen(app: SirinApp, api: AccountApi?, onBack: () -> Unit) {
             phoneUrl = client.settings().phone.urls.firstOrNull() ?: client.origin
         } else { users = emptyList(); invites = emptyList(); phoneUrl = client.origin }
     }
-    fun action(block: suspend () -> Unit) {
-        if (busy) return
-        scope.launch {
-            busy = true; error = null; notice = null
-            try { block() }
-            catch (e: CancellationException) { throw e }
-            catch (e: Exception) { error = e.message ?: strings(R.string.account_activity_2); if ((e as? ApiException)?.code == 401) { me = null; issuedDevice = null; issuedInvite = null; qr = null } }
-            finally { busy = false }
-        }
-    }
+    val action = ru.rainedev.sirinmusic.ui.rememberScreenAction(
+        onStart = { busy = true; error = null; notice = null },
+        onError = { e ->
+            error = e.message ?: strings(R.string.account_activity_2)
+            if ((e as? ApiException)?.code == 401) { me = null; issuedDevice = null; issuedInvite = null; qr = null }
+        },
+        onFinish = { busy = false },
+    )
     fun copy(text: String, secret: Boolean = false) {
-        val clip = ClipData.newPlainText("Sirin Music", text)
-        if (secret) clip.description.extras = PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
-        app.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip); notice = strings(R.string.account_activity_3)
+        ru.rainedev.sirinmusic.ui.copyText(app, text, "Sirin Music", secret)
+        notice = strings(R.string.account_activity_3)
     }
     LaunchedEffect(api) { if (api?.base?.isHttps == true) action { reload() } }
     Scaffold(topBar = { TopAppBar(title = { Text(strings(R.string.account_activity_4)) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, strings(R.string.about_activity_2)) } }) }) { padding ->
@@ -210,10 +196,3 @@ private fun AccountScreen(app: SirinApp, api: AccountApi?, onBack: () -> Unit) {
 private fun accountDate(value: String): String = runCatching {
     java.time.Instant.parse(value).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM).withLocale(appLocale()))
 }.getOrDefault(value)
-private suspend fun createConnectionQr(url: String, token: String): android.graphics.Bitmap = withContext(Dispatchers.Default) {
-    val payload = "musik://connect?url=${java.net.URLEncoder.encode(url, "UTF-8")}&token=${java.net.URLEncoder.encode(token, "UTF-8")}"
-    val matrix = com.google.zxing.qrcode.QRCodeWriter().encode(payload, com.google.zxing.BarcodeFormat.QR_CODE, 768, 768)
-    androidx.core.graphics.createBitmap(768, 768).apply {
-        setPixels(IntArray(768*768) { i -> if (matrix[i%768,i/768]) android.graphics.Color.BLACK else android.graphics.Color.WHITE },0,768,0,0,768,768)
-    }
-}

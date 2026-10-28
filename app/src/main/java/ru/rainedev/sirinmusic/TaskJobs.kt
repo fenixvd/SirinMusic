@@ -9,9 +9,13 @@ import kotlinx.coroutines.launch
 internal class TaskJobs(private val scope: CoroutineScope) {
     private val jobs = mutableMapOf<String, Job>()
     val size: Int get() = jobs.size
+    fun isCurrent(key: String, job: Job?): Boolean = job != null && jobs[key] === job
+
+    fun launchIfIdle(key: String, block: suspend CoroutineScope.() -> Unit): Job =
+        jobs[key]?.takeIf { it.isActive } ?: launch(key, block)
 
     fun launch(key: String, block: suspend CoroutineScope.() -> Unit): Job {
-        jobs[key]?.cancel()
+        jobs.remove(key)?.cancel()
         val job = scope.launch(start = CoroutineStart.LAZY, block = block)
         jobs[key] = job
         job.invokeOnCompletion { if (jobs[key] === job) jobs.remove(key) }
@@ -19,7 +23,7 @@ internal class TaskJobs(private val scope: CoroutineScope) {
         return job
     }
 
-    fun cancel(key: String) { jobs[key]?.cancel() }
+    fun cancel(key: String) { jobs.remove(key)?.cancel() }
     fun cancelAll() {
         val pending = jobs.values.toList()
         jobs.clear()

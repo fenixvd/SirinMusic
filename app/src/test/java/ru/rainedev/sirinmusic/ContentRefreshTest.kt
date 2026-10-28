@@ -88,6 +88,38 @@ class ContentRefreshTest {
         assertEquals(2, shown)
     }
 
+    @Test fun lateFailureFromOldAccountCannotShowErrorOrClearNewLoading() = runBlocking {
+        val oldGate = CompletableDeferred<Unit>()
+        val newGate = CompletableDeferred<Unit>()
+        var oldAccount = true
+        var loading = false
+        val errors = mutableListOf<Exception>()
+        val refresh = ContentRefresh(this, { 0L }, onLoading = { loading = it }, onError = errors::add) {
+            if (oldAccount) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { oldGate.await() }
+                error("Old server failed")
+            } else newGate.await()
+        }
+        val old = refresh.request()!!; yield()
+        refresh.reset(); oldAccount = false
+        val next = refresh.request()!!; yield()
+        oldGate.complete(Unit); old.join()
+        assertTrue(errors.isEmpty())
+        assertTrue(loading)
+        newGate.complete(Unit); next.join()
+        assertFalse(loading)
+    }
+
+    @Test fun resetFinishesLoadingExactlyOnceEvenWithImmediateCancellation() = runBlocking {
+        val loading = mutableListOf<Boolean>()
+        val refresh = ContentRefresh(this, { 0L }, onLoading = loading::add, onError = { throw it }) {
+            kotlinx.coroutines.awaitCancellation()
+        }
+        val job = refresh.request()!!; yield()
+        refresh.reset(); job.join()
+        assertEquals(listOf(true, false), loading)
+    }
+
     @Test fun successfulDataEventuallyExpiresEvenWhenTrackCountIsUnchanged() = runBlocking {
         var now = 0L
         val refresh = ContentRefresh(this, { now }, onLoading = {}, onError = { throw it }) {}
