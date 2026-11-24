@@ -62,7 +62,13 @@ private fun SettingsScreen(app: SirinApp, appearance: Appearance, onBack: () -> 
     var error by remember { mutableStateOf<String?>(null) }
     var cacheBytes by remember { mutableLongStateOf(0L) }
     var clearing by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { cacheBytes = app.imageCache.diskBytes() }
+    var audioBytes by remember { mutableLongStateOf(0L) }
+    var clearingAudio by remember { mutableStateOf(false) }
+    val cacheSettings by app.settings.cache.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) {
+        cacheBytes = app.imageCache.diskBytes()
+        audioBytes = app.audioCache.bytes()
+    }
     val scope = rememberCoroutineScope()
     val snack = remember { SnackbarHostState() }
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -134,6 +140,33 @@ private fun SettingsScreen(app: SirinApp, appearance: Appearance, onBack: () -> 
                 }
             }
             }
+            if (activePage == SettingsPage.APP) {
+            ListItem(headlineContent = { Text(strings(R.string.settings_caching_1)) },
+                supportingContent = { Text(strings(R.string.settings_caching_2)) },
+                trailingContent = { Switch(checked = cacheSettings.cacheMusic,
+                    onCheckedChange = { app.settings.setCacheSettings(cacheSettings.copy(cacheMusic = it)) }) })
+            ListItem(headlineContent = { Text(strings(R.string.settings_caching_3)) },
+                supportingContent = { Text(strings(R.string.settings_caching_4)) },
+                trailingContent = { Switch(checked = cacheSettings.prefetchQueue, enabled = cacheSettings.cacheMusic,
+                    onCheckedChange = { app.settings.setCacheSettings(cacheSettings.copy(prefetchQueue = it)) }) })
+            HorizontalDivider(Modifier.padding(vertical = 16.dp))
+            Text(strings(R.string.settings_caching_5), style = MaterialTheme.typography.titleMedium)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                val sizeOptions = listOf(
+                    100L * 1024 * 1024, CacheSettings.DEFAULT_LIMIT_BYTES,
+                    500L * 1024 * 1024, 1024L * 1024 * 1024)
+                sizeOptions.forEach { bytes ->
+                    FilterChip(selected = cacheSettings.limitBytes == bytes,
+                        onClick = {
+                            app.settings.setCacheSettings(cacheSettings.copy(limitBytes = bytes))
+                            scope.launch { app.audioCache.trimTo(bytes) }
+                        },
+                        label = { Text(android.text.format.Formatter.formatShortFileSize(app, bytes)) })
+                }
+            }
+            Text(strings(R.string.settings_caching_6), style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 8.dp))
+            }
             if (activePage == SettingsPage.STORAGE) {
             Text(strings(R.string.settings_activity_10), style = MaterialTheme.typography.titleLarge)
             Text(strings(R.string.settings_activity_11, android.text.format.Formatter.formatShortFileSize(app, cacheBytes)),
@@ -151,6 +184,24 @@ private fun SettingsScreen(app: SirinApp, appearance: Appearance, onBack: () -> 
                     finally { clearing = false }
                 }
             }, modifier = Modifier.padding(top = 12.dp)) { Text(if (clearing) strings(R.string.settings_activity_15) else strings(R.string.settings_activity_16)) }
+
+            HorizontalDivider(Modifier.padding(vertical = 16.dp))
+            Text(strings(R.string.settings_activity_25,
+                android.text.format.Formatter.formatShortFileSize(app, audioBytes),
+                android.text.format.Formatter.formatShortFileSize(app, cacheSettings.limitBytes)))
+            Text(strings(R.string.settings_activity_27), style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(enabled = !clearingAudio, onClick = {
+                clearingAudio = true
+                scope.launch {
+                    try {
+                        app.audioCache.clear()
+                        audioBytes = app.audioCache.bytes()
+                        snack.showSnackbar(strings(R.string.settings_activity_29))
+                    } catch (e: CancellationException) { throw e }
+                    catch (_: Exception) { snack.showSnackbar(strings(R.string.settings_activity_14)) }
+                    finally { clearingAudio = false }
+                }
+            }, modifier = Modifier.padding(top = 12.dp)) { Text(if (clearingAudio) strings(R.string.settings_activity_15) else strings(R.string.settings_activity_28)) }
 
             }
             if (activePage == SettingsPage.CONNECTION) {

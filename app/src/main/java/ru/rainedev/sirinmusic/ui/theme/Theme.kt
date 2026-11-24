@@ -1,9 +1,18 @@
 package ru.rainedev.sirinmusic.ui.theme
 
+import android.database.ContentObserver
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import ru.rainedev.sirinmusic.data.*
@@ -59,8 +68,19 @@ fun SirinMusicTheme(appearance: Appearance = Appearance(), content: @Composable 
         ThemeMode.DARK -> true
     }
     val context = LocalContext.current
+    // Системная палитра может смениться на живом процессе (новые обои, смена пресета).
+    // Счётчик наблюдения заставляет пересчитать динамическую схему без перезапуска.
+    var systemPaletteKey by remember { mutableIntStateOf(0) }
+    DisposableEffect(context) {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) { systemPaletteKey++ }
+        }
+        context.contentResolver.registerContentObserver(
+            Settings.Secure.getUriFor("theme_customization_overlay_packages"), true, observer)
+        onDispose { context.contentResolver.unregisterContentObserver(observer) }
+    }
     val colors = if (appearance.dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        remember(systemPaletteKey, dark) { if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context) }
     } else androidx.compose.runtime.remember(appearance.palette, appearance.customColor, dark) {
         seedColors(if (appearance.palette == Palette.CUSTOM) appearance.customColor else appearance.palette.seed, dark)
     }

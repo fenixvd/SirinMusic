@@ -1,0 +1,3 @@
+Music cache: upcoming queue tracks download to disk in the background so network pauses never interrupt playback. The size limit is configurable — from 100 MB up to 1 GB.
+A new "App settings" page adds cache and queue prefetch toggles. Storage shows the music cache size with a clear button.
+Repeat track and start radio from a track. Queue reasons are now human-readable: "sounds like you", "not played in a while". The theme recolors instantly when system colors or wallpaper change.

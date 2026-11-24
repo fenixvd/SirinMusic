@@ -257,6 +257,8 @@ private fun ConnectedContent(app: SirinApp, vm: AppViewModel, state: AppState, p
                             vm.playback::dislike, { player.current?.let { vm.toggleFavorite(it.key) } }, vm.playback::seekTo,
                             { id, index -> if (player.fixed) vm.playback.jumpToIndex(index) else vm.playback.jumpTo(id) }, padding, onLike = vm.playback::like,
                             onLyrics = { nav.navigate("lyrics") }, onAddToPlaylist = { addTrackId = player.current?.key },
+                            onRadioFromTrack = { player.current?.let { vm.playback.startRadio(it.key) } },
+                            onToggleRepeat = vm.playback::toggleRepeat,
                             favoriteBusy = player.current?.let { "favorite:${it.key}" in state.busy } == true,
                             onPrevious = { vm.playback.previous() })
                     }

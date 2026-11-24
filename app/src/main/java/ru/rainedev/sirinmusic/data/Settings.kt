@@ -51,6 +51,22 @@ class Settings(context: Context) : ConnectionSettings {
         _appearance.value = value
     }
 
+    private val cachePrefs = context.getSharedPreferences("sirin_cache", Context.MODE_PRIVATE)
+    private val _cache = MutableStateFlow(CacheSettings(
+        cacheMusic = cachePrefs.getBoolean("cache_music", true),
+        prefetchQueue = cachePrefs.getBoolean("prefetch_queue", true),
+        limitBytes = cachePrefs.getLong("limit_bytes", CacheSettings.DEFAULT_LIMIT_BYTES),
+    ))
+
+    /** Настройки кеша музыки: включённость, префетч очереди, лимит размера. */
+    val cache = _cache.asStateFlow()
+
+    fun setCacheSettings(value: CacheSettings) {
+        cachePrefs.edit().putBoolean("cache_music", value.cacheMusic)
+            .putBoolean("prefetch_queue", value.prefetchQueue).putLong("limit_bytes", value.limitBytes).apply()
+        _cache.value = value
+    }
+
     fun setConnection(url: String, apiToken: String, authDisabled: Boolean = false) = synchronized(prefs) {
         prefs.edit().putString(KEY_URL, url.trim().trimEnd('/')).putString(KEY_TOKEN, apiToken.trim()).putBoolean(KEY_AUTH_DISABLED, authDisabled).apply()
     }
@@ -95,3 +111,10 @@ enum class Palette(private val labelRes: Int, val seed: Int) {
 }
 data class Appearance(val theme: ThemeMode = ThemeMode.SYSTEM, val dynamicColor: Boolean = true,
     val palette: Palette = Palette.SIRIN, val customColor: Int = 0xFF6750A4.toInt())
+
+data class CacheSettings(val cacheMusic: Boolean = true, val prefetchQueue: Boolean = true,
+    val limitBytes: Long = DEFAULT_LIMIT_BYTES) {
+    companion object {
+        const val DEFAULT_LIMIT_BYTES: Long = 300L * 1024 * 1024
+    }
+}

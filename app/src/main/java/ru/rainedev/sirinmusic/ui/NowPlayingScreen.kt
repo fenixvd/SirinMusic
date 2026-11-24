@@ -4,6 +4,7 @@ import ru.rainedev.sirinmusic.R
 import ru.rainedev.sirinmusic.strings
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -23,6 +24,8 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.ThumbDown
@@ -30,6 +33,7 @@ import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +42,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -57,6 +63,8 @@ fun NowPlayingScreen(
     onLike: () -> Unit,
     onLyrics: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    onRadioFromTrack: () -> Unit,
+    onToggleRepeat: () -> Unit,
     favoriteBusy: Boolean,
     onPrevious: () -> Unit,
 ) {
@@ -104,24 +112,23 @@ fun NowPlayingScreen(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (track?.explanation != null) {
-                Text(
-                    strings(R.string.now_playing_screen_1, track.explanation),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
 
         }
     }
     // Measured outside the scrolling content, so metadata cannot displace playback actions.
     val controls: @Composable () -> Unit = {
-        Column(
-            Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Slider(
+        Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+            // Мягкая граница: линия с затуханием к краям вместо жёсткой черты.
+            val edge = MaterialTheme.colorScheme.outline
+            Box(
+                Modifier.fillMaxWidth().padding(bottom = 8.dp).height(1.dp)
+                    .background(Brush.horizontalGradient(listOf(Color.Transparent, edge, edge, Color.Transparent)))
+            )
+            Column(
+                Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Slider(
                 value = (seekPosition ?: ui.positionSec.toFloat()).coerceIn(0f, ui.durationSec.toFloat().coerceAtLeast(1f)),
                 enabled = canSeek,
                 interactionSource = seekInteractions,
@@ -129,8 +136,6 @@ fun NowPlayingScreen(
                 onValueChangeFinished = {
                     val position = seekPosition
                     seekPosition = null
-                    // The thumb previews locally; one seek/save is sent on release.
-                    // A source change or pending navigation cancels the old gesture.
                     if (position != null && activeSeekKey == seekKey && canSeek) onSeek(position.toDouble())
                 },
                 valueRange = 0f..(if (ui.durationSec > 0) ui.durationSec.toFloat() else 1f),
@@ -161,22 +166,34 @@ fun NowPlayingScreen(
                     Icon(Icons.Rounded.ThumbDown, strings(R.string.now_playing_screen_3), tint = if (ui.ratings[track?.key] == "dislike") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 FavoriteButton(track != null && track.key in ui.favorites, track != null && !favoriteBusy, onFavorite)
+                IconButton(onClick = onToggleRepeat, enabled = track != null) {
+                    Icon(if (ui.repeatOne) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
+                        strings(R.string.now_playing_screen_8),
+                        tint = if (ui.repeatOne) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             Row {
                 TextButton(onClick = onLyrics, enabled = track != null) { Text(strings(R.string.main_activity_7)) }
                 TextButton(onClick = onAddToPlaylist, enabled = track != null) { Text(strings(R.string.now_playing_screen_4)) }
+                // Радио от трека имеет смысл только вне радио: в radio-сессии кнопки нет.
+                if (ui.fixed && track != null) {
+                    TextButton(onClick = onRadioFromTrack) { Text(strings(R.string.now_playing_screen_9)) }
+                }
+            }
             }
         }
     }
 
     val queue: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
         if (ui.queue.isNotEmpty()) {
+            // Тонкая полоса отделяет зону плеера от списка очереди.
+            item { HorizontalDivider(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
             item { SectionTitle(if (ui.fixed) strings(R.string.now_playing_screen_5) else strings(R.string.now_playing_screen_6)) }
             itemsIndexed(ui.queue, key = { index, t -> "$index:${t.key}" }) { index, t ->
                 RowCard(
                     artworkUrl = artworkUrl(t.artworkPath, 96),
                     title = t.title ?: "—",
-                    subtitle = listOfNotNull(t.artist, t.explanation).joinToString(" · "),
+                    subtitle = listOfNotNull(t.artist, trackWhyLabel(t)).joinToString(" · "),
                     onClick = { onJump(t.key, t.position ?: index) },
                 )
             }

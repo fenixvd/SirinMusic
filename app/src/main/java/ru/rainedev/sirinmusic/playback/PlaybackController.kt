@@ -14,6 +14,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.PlaybackException
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -27,9 +31,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import ru.rainedev.sirinmusic.SirinApp
 import ru.rainedev.sirinmusic.data.ApiException
 import ru.rainedev.sirinmusic.data.PlaybackState
 import ru.rainedev.sirinmusic.data.MusikApi
@@ -54,8 +60,26 @@ class PlaybackController(
     private val _ui = MutableStateFlow(PlayerUi())
     val ui: StateFlow<PlayerUi> = _ui.asStateFlow()
 
+    private val audioCache = (context.applicationContext as SirinApp).audioCache
+
+    /** Поток идёт через кеш, когда кеширование включено; иначе — напрямую с сервера. */
+    @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+    private val streamFactory = DataSource.Factory {
+        val upstream = AuthenticatedDataSourceFactory(api).createDataSource()
+        if (settings.cache.value.cacheMusic) {
+            CacheDataSource(audioCache.cache, upstream, CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        } else upstream
+    }
+
     private var loadJob: Job? = null
+    private var prefetchJob: Job? = null
+    private val PREFETCH_TRACKS = 3
     private var generation = 0
+
+    /** Отдельный источник только для префетча: CacheWriter требует конкретный CacheDataSource. */
+    @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+    private val prefetchSource = CacheDataSource(
+        audioCache.cache, AuthenticatedDataSourceFactory(api).createDataSource(), CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     private val startGate = PlaybackStartGate()
     private var ticker: Job? = null
     private var listenedSec = 0.0
@@ -87,8 +111,6 @@ class PlaybackController(
         },
     )
 
-    // ExoPlayer's noisy handler pauses its current stream. This receiver also
-    // cancels starts that are still awaiting /play or playback ownership.
     private val noisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) setPlaying(false)
@@ -105,9 +127,8 @@ class PlaybackController(
 
     private fun buildPlayer(): ExoPlayer {
         // Bearer нужен и потоку: без него /api/stream отвечает 401.
-        val http = AuthenticatedDataSourceFactory(api)
         return ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(http))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(streamFactory))
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), /* handleAudioFocus = */ true)
             .setHandleAudioBecomingNoisy(true)
@@ -238,6 +259,7 @@ class PlaybackController(
                     busy = false,
                 ) }
                 play(current, startTicket, item)
+                prefetchQueue()
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
                 if (generation == requestGeneration) _ui.update { it.copy(busy = false, error = e.message) }
@@ -303,6 +325,13 @@ class PlaybackController(
 
     fun like() { _ui.value.current?.let { rate(it.key, "like") } }
     fun dislike() { _ui.value.current?.let { rate(it.key, "dislike") } }
+
+    /** Повтор одного трека — нативная петля ExoPlayer: сервер держит сессию, skip всегда идёт дальше. */
+    fun toggleRepeat() {
+        val on = !_ui.value.repeatOne
+        player.repeatMode = if (on) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+        _ui.update { it.copy(repeatOne = on) }
+    }
 
     fun rate(id: Long, type: String) {
         require(type == "like" || type == "dislike")
@@ -413,6 +442,27 @@ class PlaybackController(
                 queue = if (reply.fixed || it.fixed) reply.tracks ?: it.queue else reply.queue,
                 maturity = reply.maturity ?: it.maturity,
             )
+        }
+        prefetchQueue()
+    }
+
+    /** Первые треки очереди скачиваются в кеш заранее, чтобы паузы в сети не рвали воспроизведение. */
+    private fun prefetchQueue() {
+        prefetchJob?.cancel()
+        val cache = settings.cache.value
+        if (!cache.cacheMusic || !cache.prefetchQueue) return
+        val urls = _ui.value.queue.take(PREFETCH_TRACKS).filter { it.ready && it.key > 0 }
+            .map { api.url(it.streamPath) }
+        if (urls.isEmpty()) return
+        prefetchJob = scope.launch(Dispatchers.IO) {
+            val whole = C.LENGTH_UNSET.toLong()
+            for (url in urls) {
+                if (!isActive || audioCache.cache.getCachedBytes(url, 0L, whole) > 0) continue
+                runCatching {
+                    CacheWriter(prefetchSource, DataSpec(android.net.Uri.parse(url), 0L, whole), null, null).cache()
+                    audioCache.trimTo(cache.limitBytes)
+                }
+            }
         }
     }
 
@@ -553,6 +603,7 @@ class PlaybackController(
         }
         loadJob?.cancel()
         restorer.cancel()
+        prefetchJob?.cancel()
         ownsPlayback = false
         syncTicker?.cancel()
         syncUnavailable = false

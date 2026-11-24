@@ -19,4 +19,5 @@ data class PlayerUi(
     val ratingPending: Set<Long> = emptySet(),
     val fixed: Boolean = false,
     val ended: Boolean = false,
+    val repeatOne: Boolean = false,
 )
