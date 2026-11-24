@@ -93,13 +93,12 @@ internal fun ProfileDetails(
             val sources = weekly.breakdowns.filter { it.dimension == "source" }
             if (sources.isNotEmpty()) Text(strings(R.string.profile_details_18), style = MaterialTheme.typography.titleMedium)
             sources.forEach { source ->
-                val name = when (source.value) {
-                    "exploit" -> strings(R.string.profile_details_19)
-                    "radio_start" -> strings(R.string.profile_details_20)
-                    "transition" -> strings(R.string.profile_details_21)
-                    "back" -> strings(R.string.profile_details_22)
-                    else -> source.value ?: strings(R.string.profile_details_23)
-                }
+                // Коды источников совпадают с очередью; «back» остаётся локальной подписью.
+                val name = radioSourceLabelRes(source.value)?.let { strings(it) }
+                    ?: when (source.value) {
+                        "back" -> strings(R.string.profile_details_22)
+                        else -> source.value ?: strings(R.string.profile_details_23)
+                    }
                 Text(name, style = MaterialTheme.typography.titleSmall)
                 Text(listOfNotNull(source.played?.let { trackCount(it) }, source.finishRate?.let { strings(R.string.profile_details_24, percent(it)) },
                     source.skipRate?.let { strings(R.string.profile_details_25, percent(it)) }).joinToString(" · "), style = MaterialTheme.typography.bodySmall)

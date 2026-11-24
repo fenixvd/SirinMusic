@@ -22,6 +22,8 @@ class SirinApp : Application(), SingletonImageLoader.Factory {
 
     val imageCache by lazy { ru.rainedev.sirinmusic.data.ImageCache(this) }
 
+    val audioCache by lazy { ru.rainedev.sirinmusic.playback.AudioCache(this) }
+
     val settings: Settings by lazy { Settings(this) }
     val api: MusikApi by lazy { MusikApi(settings) }
     val playback: PlaybackController by lazy { PlaybackController(this, api, settings) }

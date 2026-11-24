@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 
 enum class SettingsPage(private val titleRes: Int, private val summaryRes: Int, val icon: ImageVector) {
     APPEARANCE(R.string.settings_navigation_1, R.string.settings_navigation_2, Icons.Rounded.Palette),
+    APP(R.string.settings_navigation_9, R.string.settings_navigation_10, Icons.Rounded.Tune),
     STORAGE(R.string.settings_activity_10, R.string.settings_navigation_3, Icons.Rounded.Storage),
     CONNECTION(R.string.settings_activity_17, R.string.settings_navigation_4, Icons.Rounded.Dns);
     val title: String get() = strings(titleRes)

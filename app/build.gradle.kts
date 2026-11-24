@@ -21,8 +21,8 @@ android {
         applicationId = "ru.rainedev.sirinmusic"
         minSdk = 27
         targetSdk = 36
-        versionCode = 9
-        versionName = "2.2.0"
+        versionCode = 10
+        versionName = "2.2.5"
         manifestPlaceholders["appLabel"] = "@string/app_name"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -108,6 +108,7 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.media3.datasource.okhttp)
+    implementation(libs.androidx.media3.database)
     implementation(libs.androidx.security.crypto)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
